@@ -7,6 +7,7 @@ void main() {
       environment: AppEnvironment.prod,
       appDisplayName: '911 Rescue',
       apiBaseUrl: 'example.com',
+      mapboxAccessToken: String.fromEnvironment('MAPBOX_ACCESS_TOKEN'),
     ),
   );
 }

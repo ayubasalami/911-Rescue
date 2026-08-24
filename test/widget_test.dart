@@ -12,7 +12,8 @@ void main() {
             const AppConfig(
               environment: AppEnvironment.dev,
               appDisplayName: '911 Rescue Dev',
-              apiBaseUrl: 'https://dev.api.911rescueme.com',
+              apiBaseUrl: 'example.com',
+              mapboxAccessToken: 'pk.test',
             ),
           ),
         ],
@@ -21,6 +22,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('911 Rescue'), findsOneWidget);
+    expect(find.text('SOS'), findsOneWidget);
+    expect(find.text('Map'), findsOneWidget);
+
+    await tester.tap(find.text('SOS'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('🚨 Get Help Fast'), findsOneWidget);
+    expect(find.text('Ping for Help'), findsOneWidget);
+    expect(find.text('Go to Help'), findsOneWidget);
+
+    await tester.tap(find.text('Go to Help'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Then choose help type'), findsOneWidget);
+    expect(find.text('Hospital'), findsOneWidget);
   });
 }

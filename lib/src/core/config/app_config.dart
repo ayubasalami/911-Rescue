@@ -8,6 +8,7 @@ class AppConfig {
     required this.environment,
     required this.appDisplayName,
     required this.apiBaseUrl,
+    required this.mapboxAccessToken,
   });
 
   final AppEnvironment environment;
@@ -15,6 +16,7 @@ class AppConfig {
 
 
   final String apiBaseUrl;
+  final String mapboxAccessToken;
 }
 
 

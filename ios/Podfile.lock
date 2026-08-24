@@ -1,0 +1,44 @@
+PODS:
+  - Flutter (1.0.0)
+  - mapbox_maps_flutter (2.29.0):
+    - Flutter
+    - MapboxMaps (= 11.29.0)
+    - Turf (= 4.0.0)
+  - MapboxCommon (24.29.0):
+    - Turf (= 4.0.0)
+  - MapboxCoreMaps (11.29.0):
+    - MapboxCommon (= 24.29.0)
+  - MapboxMaps (11.29.0):
+    - MapboxCommon (= 24.29.0)
+    - MapboxCoreMaps (= 11.29.0)
+    - Turf (= 4.0.0)
+  - Turf (4.0.0)
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - mapbox_maps_flutter (from `.symlinks/plugins/mapbox_maps_flutter/ios`)
+
+SPEC REPOS:
+  trunk:
+    - MapboxCommon
+    - MapboxCoreMaps
+    - MapboxMaps
+    - Turf
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  mapbox_maps_flutter:
+    :path: ".symlinks/plugins/mapbox_maps_flutter/ios"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  mapbox_maps_flutter: 4fa27bbd14034ef5aec1bf416289e54d64877847
+  MapboxCommon: 8508687841c9140703753964f65d2125c2ab2f87
+  MapboxCoreMaps: bd6e280a34cf3f317a6dacc66ab9a522090f59c5
+  MapboxMaps: 37074447205cabe93ad46626126f1a5679bb3986
+  Turf: c9eb11a65d96af58cac523460fd40fec5061b081
+
+PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
+
+COCOAPODS: 1.17.0
