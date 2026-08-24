@@ -1,0 +1,3 @@
+#include "../Release.xcconfig"
+PRODUCT_BUNDLE_IDENTIFIER = com.bwanalytics.rescue911.staging
+APP_DISPLAY_NAME = 911 Rescue Staging
