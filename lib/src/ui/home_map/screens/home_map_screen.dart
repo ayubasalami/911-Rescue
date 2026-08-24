@@ -6,14 +6,14 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/facility.dart';
+import '../../../data/models/geo_point.dart';
+import '../../../data/repositories/location_repository.dart';
 import '../../get_help/widgets/get_help_sheet.dart';
 import '../view_model/home_map_view_model.dart';
 import '../widgets/facility_filter_row.dart';
 import '../widgets/facility_summary_sheet.dart';
 import '../widgets/home_map_header.dart';
 import '../widgets/map_control_button.dart';
-
-final _initialCenter = mapbox.Point(coordinates: mapbox.Position(3.3792, 6.5244));
 
 int _categoryColor(FacilityCategory category) => switch (category) {
       FacilityCategory.health => 0xFFD9004C,
@@ -22,6 +22,18 @@ int _categoryColor(FacilityCategory category) => switch (category) {
       FacilityCategory.roadSafety => 0xFF9333EA,
       FacilityCategory.other => 0xFF22C55E,
     };
+
+String _locationStatusMessage(LocationAccessStatus status) => switch (status) {
+      LocationAccessStatus.granted => '',
+      LocationAccessStatus.denied => 'Location access denied — showing Lagos by default.',
+      LocationAccessStatus.deniedForever =>
+        'Location permanently denied — enable it in Settings to see nearby facilities.',
+      LocationAccessStatus.serviceDisabled => 'Turn on location services to see nearby facilities.',
+      LocationAccessStatus.timedOut => 'Couldn\'t get your location in time — showing Lagos by default.',
+    };
+
+mapbox.Point _mapboxPoint(GeoPoint point) =>
+    mapbox.Point(coordinates: mapbox.Position(point.longitude, point.latitude));
 
 // mapbox_maps_flutter renders a native platform view that flutter_test can't
 // host, so widget tests fall back to a static placeholder here.
@@ -41,11 +53,26 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   List<Facility> _lastRenderedFacilities = const [];
   final Map<String, Facility> _annotationFacilities = {};
 
-  void _recenter() {
+  void _flyTo(GeoPoint point) {
     _mapboxMap?.flyTo(
-      mapbox.CameraOptions(center: _initialCenter, zoom: 12),
+      mapbox.CameraOptions(center: _mapboxPoint(point), zoom: 12),
       mapbox.MapAnimationOptions(duration: 800),
     );
+  }
+
+  void _resetToDefaultView() => _flyTo(defaultMapCenter);
+
+  Future<void> _recenterOnUser() async {
+    final result = await ref.read(locationRepositoryProvider).currentPosition();
+    final point = result.position;
+    if (point == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_locationStatusMessage(result.status))));
+      }
+      return;
+    }
+    _flyTo(point);
   }
 
   void _openGetHelpSheet() {
@@ -74,7 +101,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         if (facility != null) _openFacilitySheet(facility);
       },
     );
-    await _syncFacilityPins(ref.read(homeMapViewModelProvider).value ?? const []);
+    await _syncFacilityPins(ref.read(homeMapViewModelProvider).value?.facilities ?? const []);
   }
 
   Future<void> _syncFacilityPins(List<Facility> facilities) async {
@@ -101,8 +128,18 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final facilitiesAsync = ref.watch(homeMapViewModelProvider);
-    facilitiesAsync.whenData(_syncFacilityPins);
+    final homeMapAsync = ref.watch(homeMapViewModelProvider);
+    homeMapAsync.whenData((state) => _syncFacilityPins(state.facilities));
+
+    ref.listen(homeMapViewModelProvider, (previous, next) {
+      final status = next.value?.locationStatus;
+      if (status != null &&
+          status != LocationAccessStatus.granted &&
+          previous?.value?.locationStatus != status) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_locationStatusMessage(status))));
+      }
+    });
 
     return Scaffold(
       body: SafeArea(
@@ -118,28 +155,34 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               child: Stack(
                 children: [
                   Positioned.fill(
-                    child: _canRenderRealMap
-                        ? mapbox.MapWidget(
-                            styleUri: mapbox.MapboxStyles.MAPBOX_STREETS,
-                            viewport: mapbox.CameraViewportState(center: _initialCenter, zoom: 12),
-                            onMapCreated: _onMapCreated,
-                          )
-                        : Container(color: AppColors.backgroundCanvas),
+                    child: homeMapAsync.maybeWhen(
+                      data: (state) => _canRenderRealMap
+                          ? mapbox.MapWidget(
+                              styleUri: mapbox.MapboxStyles.MAPBOX_STREETS,
+                              viewport: mapbox.CameraViewportState(
+                                center: _mapboxPoint(state.center),
+                                zoom: 12,
+                              ),
+                              onMapCreated: _onMapCreated,
+                            )
+                          : Container(color: AppColors.backgroundCanvas),
+                      orElse: () => Container(color: AppColors.backgroundCanvas),
+                    ),
                   ),
-                  if (facilitiesAsync.isLoading)
+                  if (homeMapAsync.isLoading)
                     const Positioned.fill(child: Center(child: CircularProgressIndicator())),
-                  if (facilitiesAsync.hasError)
+                  if (homeMapAsync.hasError)
                     Positioned.fill(
-                      child: Center(child: Text('Failed to load facilities: ${facilitiesAsync.error}')),
+                      child: Center(child: Text('Failed to load facilities: ${homeMapAsync.error}')),
                     ),
                   Positioned(
                     right: 16,
                     top: 16,
                     child: Column(
                       children: [
-                        MapControlButton(icon: Icons.my_location, onTap: _recenter),
+                        MapControlButton(icon: Icons.my_location, onTap: _recenterOnUser),
                         const SizedBox(height: 8),
-                        MapControlButton(icon: Icons.home, onTap: _recenter),
+                        MapControlButton(icon: Icons.home, onTap: _resetToDefaultView),
                       ],
                     ),
                   ),
