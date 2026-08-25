@@ -93,12 +93,13 @@ class HomeMapScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
-  String _selectedFilter = facilityFilters.first;
+  FacilityCategory? _selectedFilter;
   mapbox.MapboxMap? _mapboxMap;
   mapbox.CircleAnnotationManager? _circleAnnotationManager;
   mapbox.PolygonAnnotationManager? _polygonAnnotationManager;
   mapbox.PolylineAnnotationManager? _polylineAnnotationManager;
-  List<Facility> _lastRenderedFacilities = const [];
+  List<Facility> _lastSourceFacilities = const [];
+  FacilityCategory? _lastAppliedFilter;
   final Map<String, Facility> _annotationFacilities = {};
   TransportMode _selectedTransportMode = TransportMode.driving;
   _OriginPopup? _originPopup;
@@ -515,15 +516,23 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
   Future<void> _syncFacilityPins(List<Facility> facilities) async {
     final manager = _circleAnnotationManager;
-    if (manager == null || identical(facilities, _lastRenderedFacilities)) {
+    if (manager == null) return;
+    if (identical(facilities, _lastSourceFacilities) && _lastAppliedFilter == _selectedFilter) {
       return;
     }
-    _lastRenderedFacilities = facilities;
+    _lastSourceFacilities = facilities;
+    _lastAppliedFilter = _selectedFilter;
+
+    final filter = _selectedFilter;
+    final visible = [
+      for (final facility in facilities)
+        if (filter == null || facility.category == filter) facility,
+    ];
 
     await manager.deleteAll();
     _annotationFacilities.clear();
     final created = await manager.createMulti([
-      for (final facility in facilities)
+      for (final facility in visible)
         mapbox.CircleAnnotationOptions(
           geometry: mapbox.Point(
             coordinates: mapbox.Position(facility.longitude, facility.latitude),
@@ -536,7 +545,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     ]);
     for (final (index, annotation) in created.indexed) {
       if (annotation != null) {
-        _annotationFacilities[annotation.id] = facilities[index];
+        _annotationFacilities[annotation.id] = visible[index];
       }
     }
   }
@@ -562,20 +571,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            const HomeMapHeader(),
-            FacilityFilterRow(
-              selected: _selectedFilter,
-              onSelected: (filter) => setState(() => _selectedFilter = filter),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return Stack(
-                    children: [
-                      Positioned.fill(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return Stack(
+              children: [
+                Positioned.fill(
                         child: homeMapAsync.maybeWhen(
                           data: (state) => _canRenderRealMap
                               ? mapbox.MapWidget(
@@ -612,8 +612,31 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                           child: MapLegend(),
                         ),
                       Positioned(
+                        top: 12,
+                        left: 16,
+                        child: MapControlButton(
+                          icon: Icons.menu,
+                          onTap: () => _showComingSoon('Menu'),
+                        ),
+                      ),
+                      const Positioned(
+                        top: 12,
+                        left: 68,
                         right: 16,
-                        top: 16,
+                        child: HomeMapHeader(),
+                      ),
+                      Positioned(
+                        top: 64,
+                        left: 0,
+                        right: 0,
+                        child: FacilityFilterRow(
+                          selected: _selectedFilter,
+                          onSelected: (filter) => setState(() => _selectedFilter = filter),
+                        ),
+                      ),
+                      Positioned(
+                        right: 16,
+                        top: 116,
                         child: Column(
                           children: [
                             MapControlButton(
@@ -759,12 +782,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                             onClose: _dismissAnalysisSheet,
                           ),
                         ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );

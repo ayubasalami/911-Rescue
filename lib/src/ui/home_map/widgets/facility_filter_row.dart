@@ -1,32 +1,36 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/models/facility.dart';
 import '../../core/widgets/app_filter_chip.dart';
+import 'map_legend.dart';
 
-const facilityFilters = ['All', 'Health', 'Police', 'Fire'];
-
+/// Filters the facility pins shown on the map — null means "All".
 class FacilityFilterRow extends StatelessWidget {
   const FacilityFilterRow({super.key, required this.selected, required this.onSelected});
 
-  final String selected;
-  final ValueChanged<String> onSelected;
+  final FacilityCategory? selected;
+  final ValueChanged<FacilityCategory?> onSelected;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 44,
-      child: ListView.separated(
+      child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: facilityFilters.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final filter = facilityFilters[index];
-          return AppFilterChip(
-            label: filter,
-            selected: selected == filter,
-            onTap: () => onSelected(filter),
-          );
-        },
+        children: [
+          AppFilterChip(label: 'All', selected: selected == null, onTap: () => onSelected(null)),
+          for (final category in FacilityCategory.values) ...[
+            const SizedBox(width: 8),
+            AppFilterChip(
+              label: category.displayLabel,
+              icon: category.legendIcon,
+              iconColor: category.legendColor,
+              selected: selected == category,
+              onTap: () => onSelected(category),
+            ),
+          ],
+        ],
       ),
     );
   }
