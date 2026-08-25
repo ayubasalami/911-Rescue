@@ -28,15 +28,20 @@ void main() {
     await tester.tap(find.text('🚨'));
     await tester.pumpAndSettle();
 
-    expect(find.text('🚨 Get Help Fast'), findsOneWidget);
-    expect(find.text('Ping for Help'), findsOneWidget);
-    expect(find.text('Go to Help'), findsOneWidget);
+    expect(find.text('Report Incident'), findsOneWidget);
+    expect(find.text('Call for Help - 112'), findsOneWidget);
 
-    await tester.tap(find.text('Go to Help'));
+    await tester.tap(find.text('Report Incident'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Then choose help type'), findsOneWidget);
-    expect(find.text('Hospital'), findsOneWidget);
+    expect(find.text('911 Rescue Triage'), findsOneWidget);
+    expect(find.text('Call 112 Now'), findsOneWidget);
+
+    await tester.tap(find.text('Report Incident'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Chest pain'), findsOneWidget);
+    expect(find.text('Describe your symptoms...'), findsOneWidget);
   });
 
   testWidgets('Bottom nav switches between shell branches', (WidgetTester tester) async {
