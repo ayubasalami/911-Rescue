@@ -91,6 +91,36 @@ Future<Uint8List> _renderCategoryMarker(FacilityCategory category) async {
   return byteData!.buffer.asUint8List();
 }
 
+/// Rasterizes a map-pin glyph for the current-location puck, replacing
+/// Mapbox's default plain dot with an actual location pin icon.
+Future<Uint8List> _renderLocationPinImage() async {
+  const size = 96.0;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, size, size));
+
+  final icon = Icons.location_pin;
+  final textPainter = TextPainter(textDirection: TextDirection.ltr)
+    ..text = TextSpan(
+      text: String.fromCharCode(icon.codePoint),
+      style: TextStyle(
+        fontSize: size,
+        fontFamily: icon.fontFamily,
+        package: icon.fontPackage,
+        color: AppColors.primary,
+      ),
+    )
+    ..layout();
+  textPainter.paint(
+    canvas,
+    Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
+  );
+
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(size.toInt(), size.toInt());
+  final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+  return byteData!.buffer.asUint8List();
+}
+
 /// The popup shown for "Your Location" or a dropped pin, anchored to a
 /// specific point on screen.
 class _OriginPopup {
@@ -535,14 +565,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     await mapboxMap.location.updateSettings(
       mapbox.LocationComponentSettings(
         enabled: true,
-        pulsingEnabled: true,
-        pulsingColor: AppColors.primary.toARGB32(),
-        puckBearingEnabled: true,
-        showAccuracyRing: true,
-        accuracyRingColor: AppColors.primary.withValues(alpha: 0.15).toARGB32(),
-        accuracyRingBorderColor: AppColors.primary
-            .withValues(alpha: 0.3)
-            .toARGB32(),
+        puckBearingEnabled: false,
+        locationPuck: mapbox.LocationPuck(
+          locationPuck2D: mapbox.LocationPuck2D(topImage: await _renderLocationPinImage()),
+        ),
       ),
     );
     await _syncFacilityPins(
@@ -578,7 +604,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             coordinates: mapbox.Position(facility.longitude, facility.latitude),
           ),
           image: await _markerImageFor(facility.category),
-          iconSize: 0.55,
+          iconSize: 0.80,
         ),
     ]);
     for (final (index, annotation) in created.indexed) {
@@ -739,12 +765,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       ),
                       if (showFloatingAnalysisControls)
                         Positioned(
+                          left: 16,
                           right: 16,
-                          bottom: 88,
-                          width: 220,
+                          bottom: 16,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               if (_showChangeModeCard) ...[
                                 ChangeCommuteModeCard(
