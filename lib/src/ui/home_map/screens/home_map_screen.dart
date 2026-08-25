@@ -578,7 +578,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             coordinates: mapbox.Position(facility.longitude, facility.latitude),
           ),
           image: await _markerImageFor(facility.category),
-          iconSize: 0.33,
+          iconSize: 0.55,
         ),
     ]);
     for (final (index, annotation) in created.indexed) {
