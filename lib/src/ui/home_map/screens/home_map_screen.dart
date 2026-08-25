@@ -1,5 +1,7 @@
 import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
+import 'dart:typed_data' show Uint8List;
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -56,6 +58,39 @@ int _colorForBandMinutes(int minutes) => TimeBand.bands
 // host, so widget tests fall back to a static placeholder here.
 bool get _canRenderRealMap => !Platform.environment.containsKey('FLUTTER_TEST');
 
+/// Rasterizes a facility category's legend glyph (colored circle + white
+/// icon) into a PNG, so map pins actually match the legend instead of
+/// being plain colored dots.
+Future<Uint8List> _renderCategoryMarker(FacilityCategory category) async {
+  const size = 96.0;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, size, size));
+  const center = Offset(size / 2, size / 2);
+  const radius = size / 2 - 4;
+
+  canvas.drawCircle(center, radius, Paint()..color = Colors.white);
+  canvas.drawCircle(center, radius - 4, Paint()..color = category.legendColor);
+
+  final icon = category.legendIcon;
+  final textPainter = TextPainter(textDirection: TextDirection.ltr)
+    ..text = TextSpan(
+      text: String.fromCharCode(icon.codePoint),
+      style: TextStyle(
+        fontSize: size * 0.48,
+        fontFamily: icon.fontFamily,
+        package: icon.fontPackage,
+        color: Colors.white,
+      ),
+    )
+    ..layout();
+  textPainter.paint(canvas, center - Offset(textPainter.width / 2, textPainter.height / 2));
+
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(size.toInt(), size.toInt());
+  final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+  return byteData!.buffer.asUint8List();
+}
+
 /// The popup shown for "Your Location" or a dropped pin, anchored to a
 /// specific point on screen.
 class _OriginPopup {
@@ -95,12 +130,13 @@ class HomeMapScreen extends ConsumerStatefulWidget {
 class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   FacilityCategory? _selectedFilter;
   mapbox.MapboxMap? _mapboxMap;
-  mapbox.CircleAnnotationManager? _circleAnnotationManager;
+  mapbox.PointAnnotationManager? _facilityAnnotationManager;
   mapbox.PolygonAnnotationManager? _polygonAnnotationManager;
   mapbox.PolylineAnnotationManager? _polylineAnnotationManager;
   List<Facility> _lastSourceFacilities = const [];
   FacilityCategory? _lastAppliedFilter;
   final Map<String, Facility> _annotationFacilities = {};
+  final Map<FacilityCategory, Uint8List> _markerImages = {};
   TransportMode _selectedTransportMode = TransportMode.driving;
   _OriginPopup? _originPopup;
   _FacilityPopup? _facilityPopup;
@@ -187,7 +223,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     });
   }
 
-  Future<void> _onFacilityTapped(mapbox.CircleAnnotation annotation) async {
+  Future<void> _onFacilityTapped(mapbox.PointAnnotation annotation) async {
     final facility = _annotationFacilities[annotation.id];
     final mapboxMap = _mapboxMap;
     if (facility == null || mapboxMap == null) return;
@@ -488,10 +524,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _polygonAnnotationManager = await mapboxMap.annotations
         .createPolygonAnnotationManager();
 
-    final circleManager = await mapboxMap.annotations
-        .createCircleAnnotationManager();
-    _circleAnnotationManager = circleManager;
-    circleManager.tapEvents(onTap: _onFacilityTapped);
+    final facilityManager = await mapboxMap.annotations
+        .createPointAnnotationManager();
+    _facilityAnnotationManager = facilityManager;
+    facilityManager.tapEvents(onTap: _onFacilityTapped);
 
     _polylineAnnotationManager = await mapboxMap.annotations
         .createPolylineAnnotationManager();
@@ -514,8 +550,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     );
   }
 
+  Future<Uint8List> _markerImageFor(FacilityCategory category) async {
+    return _markerImages[category] ??= await _renderCategoryMarker(category);
+  }
+
   Future<void> _syncFacilityPins(List<Facility> facilities) async {
-    final manager = _circleAnnotationManager;
+    final manager = _facilityAnnotationManager;
     if (manager == null) return;
     if (identical(facilities, _lastSourceFacilities) && _lastAppliedFilter == _selectedFilter) {
       return;
@@ -533,14 +573,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _annotationFacilities.clear();
     final created = await manager.createMulti([
       for (final facility in visible)
-        mapbox.CircleAnnotationOptions(
+        mapbox.PointAnnotationOptions(
           geometry: mapbox.Point(
             coordinates: mapbox.Position(facility.longitude, facility.latitude),
           ),
-          circleColor: facility.category.legendColor.toARGB32(),
-          circleRadius: 8,
-          circleStrokeColor: 0xFFFFFFFF,
-          circleStrokeWidth: 2,
+          image: await _markerImageFor(facility.category),
+          iconSize: 0.33,
         ),
     ]);
     for (final (index, annotation) in created.indexed) {
