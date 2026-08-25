@@ -14,6 +14,7 @@ import '../widgets/facility_filter_row.dart';
 import '../widgets/facility_summary_sheet.dart';
 import '../widgets/home_map_header.dart';
 import '../widgets/map_control_button.dart';
+import '../widgets/your_location_card.dart';
 
 int _categoryColor(FacilityCategory category) => switch (category) {
       FacilityCategory.health => 0xFFD9004C,
@@ -52,6 +53,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   mapbox.CircleAnnotationManager? _circleAnnotationManager;
   List<Facility> _lastRenderedFacilities = const [];
   final Map<String, Facility> _annotationFacilities = {};
+  bool _showLocationCard = false;
+  TransportMode _selectedTransportMode = TransportMode.driving;
 
   void _flyTo(GeoPoint point) {
     _mapboxMap?.flyTo(
@@ -73,6 +76,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       return;
     }
     _flyTo(point);
+    if (mounted) setState(() => _showLocationCard = true);
+  }
+
+  void _analyzeAccess() {
+    // Accessibility Analyzer (commute mode + time-threshold routing) isn't
+    // built yet on mobile — this mirrors the web feature as a placeholder.
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Accessibility Analyzer is coming soon.')));
   }
 
   void _openGetHelpSheet() {
@@ -100,6 +111,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         final facility = _annotationFacilities[annotation.id];
         if (facility != null) _openFacilitySheet(facility);
       },
+    );
+    await mapboxMap.location.updateSettings(
+      mapbox.LocationComponentSettings(
+        enabled: true,
+        pulsingEnabled: true,
+        pulsingColor: AppColors.primary.toARGB32(),
+        puckBearingEnabled: true,
+        showAccuracyRing: true,
+        accuracyRingColor: AppColors.primary.withValues(alpha: 0.15).toARGB32(),
+        accuracyRingBorderColor: AppColors.primary.withValues(alpha: 0.3).toARGB32(),
+      ),
     );
     await _syncFacilityPins(ref.read(homeMapViewModelProvider).value?.facilities ?? const []);
   }
@@ -196,6 +218,29 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       label: const Text('SOS'),
                     ),
                   ),
+                  if (_showLocationCard)
+                    Align(
+                      alignment: Alignment.center,
+                      child: FractionalTranslation(
+                        translation: const Offset(0, -0.5),
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 28),
+                          child: SizedBox(
+                            width: 260,
+                            child: YourLocationCard(
+                              selectedMode: _selectedTransportMode,
+                              onModeSelected: (mode) => setState(() => _selectedTransportMode = mode),
+                              onAnalyzeAccess: _analyzeAccess,
+                              onGetHelpFast: () {
+                                setState(() => _showLocationCard = false);
+                                _openGetHelpSheet();
+                              },
+                              onClose: () => setState(() => _showLocationCard = false),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
