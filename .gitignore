@@ -50,3 +50,6 @@ app.*.map.json
 
 # Secrets — copy dart_defines.example.json to dart_defines.json and fill in real values
 dart_defines.json
+
+# Reference screenshots added manually during device testing
+/screenshots/

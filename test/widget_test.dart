@@ -22,10 +22,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('SOS'), findsOneWidget);
+    expect(find.text('🚨'), findsOneWidget);
     expect(find.text('Map'), findsOneWidget);
 
-    await tester.tap(find.text('SOS'));
+    await tester.tap(find.text('🚨'));
     await tester.pumpAndSettle();
 
     expect(find.text('🚨 Get Help Fast'), findsOneWidget);
@@ -67,6 +67,6 @@ void main() {
 
     await tester.tap(find.text('Map'));
     await tester.pumpAndSettle();
-    expect(find.text('SOS'), findsOneWidget);
+    expect(find.text('🚨'), findsOneWidget);
   });
 }
