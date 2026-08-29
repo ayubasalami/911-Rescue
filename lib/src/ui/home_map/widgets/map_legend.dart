@@ -105,4 +105,12 @@ extension FacilityCategoryLegend on FacilityCategory {
         FacilityCategory.fire => 0xFFF59E0B,
         FacilityCategory.roadSafety => 0xFF9333EA,
       });
+
+  /// Real agency crests exist for Police and Fire — everything else has no
+  /// crest and falls back to [legendIcon] wherever this is used.
+  String? get crestAsset => switch (this) {
+        FacilityCategory.police => 'assets/images/police_logo.png',
+        FacilityCategory.fire => 'assets/images/fire_logo.png',
+        _ => null,
+      };
 }

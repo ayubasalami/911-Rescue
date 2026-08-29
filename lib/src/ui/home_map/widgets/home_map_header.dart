@@ -17,14 +17,21 @@ class HomeMapHeader extends StatelessWidget {
         border: Border.all(color: AppColors.border),
       ),
       alignment: Alignment.center,
-      child: RichText(
-        text: const TextSpan(
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-          children: [
-            TextSpan(text: '911 ', style: TextStyle(color: AppColors.primary)),
-            TextSpan(text: 'Rescue', style: TextStyle(color: AppColors.success)),
-          ],
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Image.asset('assets/images/logo.png', width: 22, height: 22),
+          const SizedBox(width: 8),
+          RichText(
+            text: const TextSpan(
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              children: [
+                TextSpan(text: '911 ', style: TextStyle(color: AppColors.primary)),
+                TextSpan(text: 'Rescue', style: TextStyle(color: AppColors.success)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
