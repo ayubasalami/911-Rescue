@@ -1,7 +1,5 @@
 import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
-import 'dart:typed_data' show Uint8List;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,12 +10,10 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
-import '../../../data/repositories/access_analysis_repository.dart';
-import '../../../data/repositories/location_repository.dart';
-import '../../../data/services/access_analysis_service.dart';
 import '../../get_help/widgets/get_help_sheet.dart';
 import '../../triage_chat/widgets/triage_chat_sheet.dart';
 import '../../triage_chat/widgets/triage_entry_sheet.dart';
+import '../controllers/map_annotation_controller.dart';
 import '../view_model/home_map_view_model.dart';
 import '../widgets/access_analysis_sheet.dart';
 import '../widgets/access_origin_popup.dart';
@@ -32,123 +28,9 @@ import '../widgets/sos_action_menu.dart';
 import '../widgets/turn_by_turn_sheet.dart';
 import '../widgets/view_results_button.dart';
 
-String _locationStatusMessage(LocationAccessStatus status) => switch (status) {
-  LocationAccessStatus.granted => '',
-  LocationAccessStatus.denied =>
-    'Location access denied — showing Lagos by default.',
-  LocationAccessStatus.deniedForever =>
-    'Location permanently denied — enable it in Settings to see nearby facilities.',
-  LocationAccessStatus.serviceDisabled =>
-    'Turn on location services to see nearby facilities.',
-  LocationAccessStatus.timedOut =>
-    'Couldn\'t get your location in time — showing Lagos by default.',
-};
-
-mapbox.Point _mapboxPoint(GeoPoint point) =>
-    mapbox.Point(coordinates: mapbox.Position(point.longitude, point.latitude));
-
-int _colorForBandMinutes(int minutes) => TimeBand.bands
-    .firstWhere(
-      (band) => band.maxMinutes == minutes,
-      orElse: () => TimeBand.bands.last,
-    )
-    .color;
-
 // mapbox_maps_flutter renders a native platform view that flutter_test can't
 // host, so widget tests fall back to a static placeholder here.
 bool get _canRenderRealMap => !Platform.environment.containsKey('FLUTTER_TEST');
-
-/// Rasterizes a facility category's legend glyph (colored circle + white
-/// icon) into a PNG, so map pins actually match the legend instead of
-/// being plain colored dots.
-Future<Uint8List> _renderCategoryMarker(FacilityCategory category) async {
-  const size = 96.0;
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, size, size));
-  const center = Offset(size / 2, size / 2);
-  const radius = size / 2 - 4;
-
-  canvas.drawCircle(center, radius, Paint()..color = Colors.white);
-  canvas.drawCircle(center, radius - 4, Paint()..color = category.legendColor);
-
-  final icon = category.legendIcon;
-  final textPainter = TextPainter(textDirection: TextDirection.ltr)
-    ..text = TextSpan(
-      text: String.fromCharCode(icon.codePoint),
-      style: TextStyle(
-        fontSize: size * 0.48,
-        fontFamily: icon.fontFamily,
-        package: icon.fontPackage,
-        color: Colors.white,
-      ),
-    )
-    ..layout();
-  textPainter.paint(canvas, center - Offset(textPainter.width / 2, textPainter.height / 2));
-
-  final picture = recorder.endRecording();
-  final image = await picture.toImage(size.toInt(), size.toInt());
-  final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-  return byteData!.buffer.asUint8List();
-}
-
-/// Rasterizes a map-pin glyph for the current-location puck, replacing
-/// Mapbox's default plain dot with an actual location pin icon.
-Future<Uint8List> _renderLocationPinImage() async {
-  const size = 96.0;
-  final recorder = ui.PictureRecorder();
-  final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, size, size));
-
-  final icon = Icons.location_pin;
-  final textPainter = TextPainter(textDirection: TextDirection.ltr)
-    ..text = TextSpan(
-      text: String.fromCharCode(icon.codePoint),
-      style: TextStyle(
-        fontSize: size,
-        fontFamily: icon.fontFamily,
-        package: icon.fontPackage,
-        color: AppColors.primary,
-      ),
-    )
-    ..layout();
-  textPainter.paint(
-    canvas,
-    Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
-  );
-
-  final picture = recorder.endRecording();
-  final image = await picture.toImage(size.toInt(), size.toInt());
-  final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-  return byteData!.buffer.asUint8List();
-}
-
-/// The popup shown for "Your Location" or a dropped pin, anchored to a
-/// specific point on screen.
-class _OriginPopup {
-  const _OriginPopup({
-    required this.point,
-    required this.anchor,
-    required this.title,
-    required this.analyzeLabel,
-    this.followsUser = false,
-  });
-
-  final GeoPoint point;
-  final Offset anchor;
-  final String title;
-  final String analyzeLabel;
-
-  /// Whether [point] is the user's live location, rather than a dropped
-  /// pin — determines whether routes from here should track a fresh GPS
-  /// fix or stay anchored to the point that was analyzed.
-  final bool followsUser;
-}
-
-class _FacilityPopup {
-  const _FacilityPopup({required this.facility, required this.anchor});
-
-  final Facility facility;
-  final Offset anchor;
-}
 
 class HomeMapScreen extends ConsumerStatefulWidget {
   const HomeMapScreen({super.key});
@@ -157,121 +39,70 @@ class HomeMapScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeMapScreen> createState() => _HomeMapScreenState();
 }
 
+/// Everything here is view-layer wiring: presenting dialogs/sheets/snackbars
+/// (which need `BuildContext`), and driving [MapAnnotationController] (which
+/// holds the live Mapbox platform view). All business/app state and
+/// orchestration logic lives in [HomeMapViewModel] — see it and
+/// [MapAnnotationController] for why the split is drawn there.
 class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
-  FacilityCategory? _selectedFilter;
-  mapbox.MapboxMap? _mapboxMap;
-  mapbox.PointAnnotationManager? _facilityAnnotationManager;
-  mapbox.PolygonAnnotationManager? _polygonAnnotationManager;
-  mapbox.PolylineAnnotationManager? _polylineAnnotationManager;
-  List<Facility> _lastSourceFacilities = const [];
-  FacilityCategory? _lastAppliedFilter;
-  final Map<String, Facility> _annotationFacilities = {};
-  final Map<FacilityCategory, Uint8List> _markerImages = {};
-  TransportMode _selectedTransportMode = TransportMode.driving;
-  _OriginPopup? _originPopup;
-  _FacilityPopup? _facilityPopup;
-  bool _showLegend = true;
-  AccessAnalysisResult? _activeAnalysis;
-  GeoPoint? _activeAnalysisOrigin;
-  bool _activeAnalysisFollowsUser = false;
-  bool _showAnalysisSheet = false;
-  bool _showChangeModeCard = true;
-  bool _showSosMenu = false;
+  final _mapController = MapAnnotationController();
 
-  Future<void> _flyTo(GeoPoint point) {
-    return _mapboxMap?.flyTo(
-          mapbox.CameraOptions(center: _mapboxPoint(point), zoom: 12),
-          mapbox.MapAnimationOptions(duration: 800),
-        ) ??
-        Future.value();
-  }
+  /// The on-screen anchor for whichever popup is showing (origin or
+  /// facility selection, from [HomeMapState]) — a derived pixel position,
+  /// not business state, so it stays here rather than in the ViewModel.
+  Offset? _popupAnchor;
 
-  void _resetToDefaultView() => _flyTo(defaultMapCenter);
+  HomeMapViewModel get _viewModel => ref.read(homeMapViewModelProvider.notifier);
 
   void _showComingSoon(String feature) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$feature is coming soon.')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$feature is coming soon.')));
   }
 
-  void _toggleLegend() => setState(() => _showLegend = !_showLegend);
+  void _resetToDefaultView() => _mapController.flyTo(defaultMapCenter);
 
   Future<void> _recenterOnUser() async {
-    final result = await ref.read(locationRepositoryProvider).currentPosition();
-    final point = result.position;
-    if (point == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_locationStatusMessage(result.status))),
-        );
-      }
-      return;
-    }
-    await _flyTo(point);
-    final mapboxMap = _mapboxMap;
-    if (!mounted || mapboxMap == null) return;
-    final pixel = await mapboxMap.pixelForCoordinate(_mapboxPoint(point));
+    final point = await _viewModel.recenterOnUser();
+    if (point == null || !mounted) return;
+    await _mapController.flyTo(point);
     if (!mounted) return;
-    setState(() {
-      _facilityPopup = null;
-      _originPopup = _OriginPopup(
-        point: point,
-        anchor: Offset(pixel.x, pixel.y),
-        title: 'Your Location',
-        analyzeLabel: 'Analyze Access',
-        followsUser: true,
-      );
-    });
+    final anchor = await _mapController.pixelForCoordinate(point);
+    if (!mounted) return;
+    setState(() => _popupAnchor = anchor);
   }
 
   void _onMapTapped(mapbox.MapContentGestureContext context) {
     final coordinates = context.point.coordinates;
-    final point = GeoPoint(
-      latitude: coordinates.lat.toDouble(),
-      longitude: coordinates.lng.toDouble(),
-    );
-    unawaited(_showDroppedPinPopup(point));
+    final point = GeoPoint(latitude: coordinates.lat.toDouble(), longitude: coordinates.lng.toDouble());
+    unawaited(_selectDroppedPin(point));
   }
 
   /// Centers the camera on [point] before anchoring the popup there, so it
   /// always has room to render fully inside the map area and never ends up
   /// stuck behind the app bar.
-  Future<void> _showDroppedPinPopup(GeoPoint point) async {
-    await _flyTo(point);
-    final mapboxMap = _mapboxMap;
-    if (!mounted || mapboxMap == null) return;
-    final pixel = await mapboxMap.pixelForCoordinate(_mapboxPoint(point));
+  Future<void> _selectDroppedPin(GeoPoint point) async {
+    await _mapController.flyTo(point);
     if (!mounted) return;
-    setState(() {
-      _facilityPopup = null;
-      _originPopup = _OriginPopup(
-        point: point,
-        anchor: Offset(pixel.x, pixel.y),
-        title: '📍 Dropped Pin',
-        analyzeLabel: 'Analyze Access Here',
-      );
-    });
+    final anchor = await _mapController.pixelForCoordinate(point);
+    if (!mounted) return;
+    _viewModel.selectOrigin(point: point, title: '📍 Dropped Pin', analyzeLabel: 'Analyze Access Here');
+    setState(() => _popupAnchor = anchor);
   }
 
   Future<void> _onFacilityTapped(mapbox.PointAnnotation annotation) async {
-    final facility = _annotationFacilities[annotation.id];
-    final mapboxMap = _mapboxMap;
-    if (facility == null || mapboxMap == null) return;
-    final point = GeoPoint(
-      latitude: facility.latitude,
-      longitude: facility.longitude,
-    );
-    await _flyTo(point);
+    final facility = _mapController.facilityForAnnotation(annotation.id);
+    if (facility == null) return;
+    final point = GeoPoint(latitude: facility.latitude, longitude: facility.longitude);
+    await _mapController.flyTo(point);
     if (!mounted) return;
-    final pixel = await mapboxMap.pixelForCoordinate(_mapboxPoint(point));
+    final anchor = await _mapController.pixelForCoordinate(point);
     if (!mounted) return;
-    setState(() {
-      _originPopup = null;
-      _facilityPopup = _FacilityPopup(
-        facility: facility,
-        anchor: Offset(pixel.x, pixel.y),
-      );
-    });
+    _viewModel.selectFacility(facility);
+    setState(() => _popupAnchor = anchor);
+  }
+
+  void _clearPopup() {
+    _viewModel.clearPopups();
+    setState(() => _popupAnchor = null);
   }
 
   void _openGetHelpSheet() {
@@ -279,15 +110,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) =>
-          GetHelpSheet(onDismiss: () => Navigator.of(sheetContext).pop()),
+      builder: (sheetContext) => GetHelpSheet(onDismiss: () => Navigator.of(sheetContext).pop()),
     );
   }
 
-  void _toggleSosMenu() => setState(() => _showSosMenu = !_showSosMenu);
-
   Future<void> _call112() async {
-    setState(() => _showSosMenu = false);
+    _viewModel.closeSosMenu();
     final uri = Uri(scheme: 'tel', path: '112');
     try {
       final launched = await launchUrl(uri);
@@ -302,7 +130,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   }
 
   void _openTriageEntry() {
-    setState(() => _showSosMenu = false);
+    _viewModel.closeSosMenu();
     showDialog<void>(
       context: context,
       builder: (dialogContext) => Dialog(
@@ -334,102 +162,49 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   }
 
   void _openFacilitySheet(Facility facility) {
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => FacilitySummarySheet(facility: facility),
-    );
+    showModalBottomSheet(context: context, builder: (_) => FacilitySummarySheet(facility: facility));
   }
 
   void _viewFacilityInfo(Facility facility) {
-    setState(() => _facilityPopup = null);
+    _clearPopup();
     _openFacilitySheet(facility);
   }
 
   void _saveFacility() {
-    setState(() => _facilityPopup = null);
+    _clearPopup();
     _showComingSoon('Saving facilities');
   }
 
   Future<void> _getDirectionsToFacility(Facility facility) async {
-    setState(() => _facilityPopup = null);
-    final locationResult = await ref
-        .read(locationRepositoryProvider)
-        .currentPosition();
-    final origin = locationResult.position;
-    if (origin == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_locationStatusMessage(locationResult.status)),
-          ),
-        );
-      }
-      return;
-    }
-    await _getDirectionsTo(
-      origin,
-      GeoPoint(latitude: facility.latitude, longitude: facility.longitude),
+    _clearPopup();
+    final origin = await _viewModel.currentUserLocation();
+    if (origin == null) return;
+    await _getDirectionsTo(origin, GeoPoint(latitude: facility.latitude, longitude: facility.longitude));
+  }
+
+  Future<void> _mapRouteTo(GeoPoint origin, GeoPoint destination) async {
+    final route = await _viewModel.fetchRoute(origin, destination);
+    if (route != null) await _mapController.renderRoute(route.points);
+  }
+
+  Future<void> _getDirectionsTo(GeoPoint origin, GeoPoint destination) async {
+    final route = await _viewModel.fetchRoute(origin, destination);
+    if (route == null) return;
+    await _mapController.renderRoute(route.points);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      barrierColor: Colors.black26,
+      builder: (_) => TurnByTurnSheet(steps: route.steps),
     );
   }
 
-  Future<void> _renderIsochrone(List<IsochroneRing> rings) async {
-    final manager = _polygonAnnotationManager;
-    if (manager == null) return;
-    await manager.deleteAll();
-    final sorted = [...rings]..sort((a, b) => b.minutes.compareTo(a.minutes));
-    await manager.createMulti([
-      for (final ring in sorted)
-        mapbox.PolygonAnnotationOptions(
-          geometry: mapbox.Polygon(
-            coordinates: [
-              [
-                for (final point in ring.points)
-                  mapbox.Position(point.longitude, point.latitude),
-              ],
-            ],
-          ),
-          fillColor: _colorForBandMinutes(ring.minutes),
-          fillOpacity: 0.35,
-        ),
-    ]);
-  }
-
-  Future<void> _renderRoute(List<GeoPoint> points) async {
-    final manager = _polylineAnnotationManager;
-    if (manager == null) return;
-    await manager.deleteAll();
-    await manager.create(
-      mapbox.PolylineAnnotationOptions(
-        geometry: mapbox.LineString(
-          coordinates: [
-            for (final point in points)
-              mapbox.Position(point.longitude, point.latitude),
-          ],
-        ),
-        lineColor: AppColors.success.toARGB32(),
-        lineWidth: 4,
-      ),
-    );
-  }
-
-  Future<void> _clearIsochroneAndRoute() async {
-    await _polygonAnnotationManager?.deleteAll();
-    await _polylineAnnotationManager?.deleteAll();
-  }
-
-  /// Runs (or re-runs, on a mode change) the analysis for [origin]. Leaving
-  /// an analysis active and only closing its sheet — via [_dismissAnalysisSheet]
-  /// — must not cancel it; only [_cancelAnalysis] does that.
-  Future<void> _runAnalysis(
-    GeoPoint origin, {
-    bool openSheet = true,
-    bool followsUser = false,
-  }) async {
-    setState(() {
-      _originPopup = null;
-      _facilityPopup = null;
-    });
-
+  /// Runs (or re-runs, on a mode change) the analysis for [origin], showing
+  /// a blocking loading dialog while it's in flight and rendering the
+  /// resulting isochrone polygon on success. Any failure is surfaced by the
+  /// [HomeMapState.errorMessage] listener in [build] instead of here.
+  Future<void> _runAnalysis(GeoPoint origin, {bool openSheet = true, bool followsUser = false}) async {
     unawaited(
       showDialog<void>(
         context: context,
@@ -437,419 +212,214 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         builder: (_) => const Center(child: CircularProgressIndicator()),
       ),
     );
-
-    late final AccessAnalysisResult result;
-    try {
-      result = await ref
-          .read(accessAnalysisRepositoryProvider)
-          .analyze(origin: origin, mode: _selectedTransportMode);
-    } catch (error) {
-      if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not run accessibility analysis: $error')),
-      );
-      return;
-    }
-
+    await _viewModel.runAnalysis(origin, openSheet: openSheet, followsUser: followsUser);
     if (!mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
-
-    setState(() {
-      _activeAnalysis = result;
-      _activeAnalysisOrigin = origin;
-      _activeAnalysisFollowsUser = followsUser;
-      _showChangeModeCard = true;
-      if (openSheet) _showAnalysisSheet = true;
-    });
-    await _renderIsochrone(result.isochroneRings);
+    final rings = ref.read(homeMapViewModelProvider).value?.activeAnalysis?.isochroneRings;
+    if (rings != null) await _mapController.renderIsochrone(rings);
   }
 
-  void _dismissChangeModeCard() => setState(() => _showChangeModeCard = false);
-
-  void _changeCommuteMode(TransportMode mode) {
-    setState(() => _selectedTransportMode = mode);
-    final origin = _activeAnalysisOrigin;
-    if (origin != null) {
-      _runAnalysis(
-        origin,
-        openSheet: false,
-        followsUser: _activeAnalysisFollowsUser,
-      );
-    }
+  Future<void> _changeCommuteMode(TransportMode mode) async {
+    await _viewModel.changeCommuteMode(mode);
+    final rings = ref.read(homeMapViewModelProvider).value?.activeAnalysis?.isochroneRings;
+    if (rings != null) await _mapController.renderIsochrone(rings);
   }
-
-  /// The point routes/directions should start from. For an analysis that
-  /// followed "Your Location," this re-fetches a fresh GPS position instead
-  /// of reusing the point captured when Analyze Access was tapped — that
-  /// captured point goes stale relative to the live location puck the
-  /// longer the analysis stays open.
-  Future<GeoPoint?> _resolveRouteOrigin() async {
-    if (!_activeAnalysisFollowsUser) return _activeAnalysisOrigin;
-    final result = await ref.read(locationRepositoryProvider).currentPosition();
-    return result.position ?? _activeAnalysisOrigin;
-  }
-
-  void _dismissAnalysisSheet() => setState(() => _showAnalysisSheet = false);
-
-  void _reopenAnalysisSheet() => setState(() => _showAnalysisSheet = true);
 
   Future<void> _cancelAnalysis() async {
-    setState(() {
-      _activeAnalysis = null;
-      _activeAnalysisOrigin = null;
-      _activeAnalysisFollowsUser = false;
-      _showAnalysisSheet = false;
-    });
-    await _clearIsochroneAndRoute();
-  }
-
-  Future<void> _mapRouteTo(GeoPoint origin, GeoPoint destination) async {
-    try {
-      final route = await ref
-          .read(accessAnalysisServiceProvider)
-          .fetchRoute(
-            origin: origin,
-            destination: destination,
-            mode: _selectedTransportMode,
-          );
-      await _renderRoute(route.points);
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not load route: $error')));
-      }
-    }
-  }
-
-  Future<void> _getDirectionsTo(GeoPoint origin, GeoPoint destination) async {
-    try {
-      final route = await ref
-          .read(accessAnalysisServiceProvider)
-          .fetchRoute(
-            origin: origin,
-            destination: destination,
-            mode: _selectedTransportMode,
-          );
-      await _renderRoute(route.points);
-      if (!mounted) return;
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        barrierColor: Colors.black26,
-        builder: (_) => TurnByTurnSheet(steps: route.steps),
-      );
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not load directions: $error')),
-        );
-      }
-    }
+    await _viewModel.cancelAnalysis();
+    await _mapController.clearIsochroneAndRoute();
   }
 
   Future<void> _onMapCreated(mapbox.MapboxMap mapboxMap) async {
-    _mapboxMap = mapboxMap;
-    _polygonAnnotationManager = await mapboxMap.annotations
-        .createPolygonAnnotationManager();
-
-    final facilityManager = await mapboxMap.annotations
-        .createPointAnnotationManager();
-    _facilityAnnotationManager = facilityManager;
-    facilityManager.tapEvents(onTap: _onFacilityTapped);
-
-    _polylineAnnotationManager = await mapboxMap.annotations
-        .createPolylineAnnotationManager();
-
-    await mapboxMap.location.updateSettings(
-      mapbox.LocationComponentSettings(
-        enabled: true,
-        puckBearingEnabled: false,
-        locationPuck: mapbox.LocationPuck(
-          locationPuck2D: mapbox.LocationPuck2D(topImage: await _renderLocationPinImage()),
-        ),
-      ),
-    );
-    await _syncFacilityPins(
-      ref.read(homeMapViewModelProvider).value?.facilities ?? const [],
-    );
-  }
-
-  Future<Uint8List> _markerImageFor(FacilityCategory category) async {
-    return _markerImages[category] ??= await _renderCategoryMarker(category);
-  }
-
-  Future<void> _syncFacilityPins(List<Facility> facilities) async {
-    final manager = _facilityAnnotationManager;
-    if (manager == null) return;
-    if (identical(facilities, _lastSourceFacilities) && _lastAppliedFilter == _selectedFilter) {
-      return;
-    }
-    _lastSourceFacilities = facilities;
-    _lastAppliedFilter = _selectedFilter;
-
-    final filter = _selectedFilter;
-    final visible = [
-      for (final facility in facilities)
-        if (filter == null || facility.category == filter) facility,
-    ];
-
-    await manager.deleteAll();
-    _annotationFacilities.clear();
-    final created = await manager.createMulti([
-      for (final facility in visible)
-        mapbox.PointAnnotationOptions(
-          geometry: mapbox.Point(
-            coordinates: mapbox.Position(facility.longitude, facility.latitude),
-          ),
-          image: await _markerImageFor(facility.category),
-          iconSize: 0.80,
-        ),
-    ]);
-    for (final (index, annotation) in created.indexed) {
-      if (annotation != null) {
-        _annotationFacilities[annotation.id] = visible[index];
-      }
-    }
+    await _mapController.onMapCreated(mapboxMap, onFacilityTap: _onFacilityTapped);
+    final state = ref.read(homeMapViewModelProvider).value;
+    await _mapController.syncFacilityPins(state?.facilities ?? const [], state?.selectedFilter);
   }
 
   @override
   Widget build(BuildContext context) {
     final homeMapAsync = ref.watch(homeMapViewModelProvider);
-    homeMapAsync.whenData((state) => _syncFacilityPins(state.facilities));
+    final state = homeMapAsync.value;
+    if (state != null) {
+      unawaited(_mapController.syncFacilityPins(state.facilities, state.selectedFilter));
+    }
 
     ref.listen(homeMapViewModelProvider, (previous, next) {
-      final status = next.value?.locationStatus;
-      if (status != null &&
-          status != LocationAccessStatus.granted &&
-          previous?.value?.locationStatus != status) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(_locationStatusMessage(status))));
+      final message = next.value?.errorMessage;
+      if (message != null && message.isNotEmpty && previous?.value?.errorMessage != message) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+        _viewModel.clearErrorMessage();
       }
     });
 
-    final showFloatingAnalysisControls =
-        _activeAnalysis != null && !_showAnalysisSheet;
+    final showFloatingAnalysisControls = state?.activeAnalysis != null && state?.showAnalysisSheet != true;
 
     return Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return Stack(
-              children: [
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: homeMapAsync.maybeWhen(
+                  data: (s) => _canRenderRealMap
+                      ? mapbox.MapWidget(
+                          styleUri: mapbox.MapboxStyles.MAPBOX_STREETS,
+                          viewport: mapbox.CameraViewportState(
+                            center: mapboxPointFrom(s.center),
+                            zoom: 12,
+                          ),
+                          onMapCreated: _onMapCreated,
+                          // ignore: deprecated_member_use
+                          onTapListener: _onMapTapped,
+                        )
+                      : Container(color: AppColors.backgroundCanvas),
+                  orElse: () => Container(color: AppColors.backgroundCanvas),
+                ),
+              ),
+              if (homeMapAsync.isLoading)
+                const Positioned.fill(child: Center(child: CircularProgressIndicator())),
+              if (homeMapAsync.hasError)
                 Positioned.fill(
-                        child: homeMapAsync.maybeWhen(
-                          data: (state) => _canRenderRealMap
-                              ? mapbox.MapWidget(
-                                  styleUri: mapbox.MapboxStyles.MAPBOX_STREETS,
-                                  viewport: mapbox.CameraViewportState(
-                                    center: _mapboxPoint(state.center),
-                                    zoom: 12,
-                                  ),
-                                  onMapCreated: _onMapCreated,
-                                  // ignore: deprecated_member_use
-                                  onTapListener: _onMapTapped,
-                                )
-                              : Container(color: AppColors.backgroundCanvas),
-                          orElse: () =>
-                              Container(color: AppColors.backgroundCanvas),
-                        ),
+                  child: Center(child: Text('Failed to load facilities: ${homeMapAsync.error}')),
+                ),
+              if (state?.showLegend ?? true) const Positioned(left: 16, bottom: 16, child: MapLegend()),
+              Positioned(
+                top: 12,
+                left: 16,
+                child: MapControlButton(icon: Icons.menu, onTap: () => _showComingSoon('Menu')),
+              ),
+              const Positioned(top: 12, left: 68, right: 16, child: HomeMapHeader()),
+              Positioned(
+                top: 64,
+                left: 0,
+                right: 0,
+                child: FacilityFilterRow(
+                  selected: state?.selectedFilter,
+                  onSelected: _viewModel.selectFilter,
+                ),
+              ),
+              Positioned(
+                right: 16,
+                top: 116,
+                child: Column(
+                  children: [
+                    MapControlButton(icon: Icons.my_location, onTap: _recenterOnUser),
+                    const SizedBox(height: 8),
+                    MapControlButton(icon: Icons.home, onTap: _resetToDefaultView),
+                    const SizedBox(height: 8),
+                    MapControlButton(icon: Icons.search, onTap: () => _showComingSoon('Search')),
+                    const SizedBox(height: 8),
+                    MapControlButton(icon: Icons.near_me, onTap: () => _showComingSoon('Route planner')),
+                    const SizedBox(height: 8),
+                    MapControlButton(
+                      icon: Icons.list,
+                      active: state?.showLegend ?? true,
+                      onTap: _viewModel.toggleLegend,
+                    ),
+                    const SizedBox(height: 8),
+                    MapControlButton(
+                      icon: Icons.delete_outline,
+                      iconColor: AppColors.danger,
+                      onTap: _cancelAnalysis,
+                    ),
+                    const SizedBox(height: 8),
+                    MapControlButton(icon: Icons.traffic, onTap: () => _showComingSoon('Live traffic')),
+                  ],
+                ),
+              ),
+              Positioned(
+                right: 16,
+                bottom: 16,
+                child: (state?.showSosMenu ?? false)
+                    ? SosActionMenu(
+                        onReportIncident: _openTriageEntry,
+                        onCallForHelp: _call112,
+                        onClose: _viewModel.toggleSosMenu,
+                      )
+                    : FloatingActionButton(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadiusGeometry.circular(200)),
+                        backgroundColor: AppColors.danger,
+                        onPressed: _viewModel.toggleSosMenu,
+                        child: const Text('🚨', style: TextStyle(fontSize: 26)),
                       ),
-                      if (homeMapAsync.isLoading)
-                        const Positioned.fill(
-                          child: Center(child: CircularProgressIndicator()),
+              ),
+              if (showFloatingAnalysisControls)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 16,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (state!.showChangeModeCard) ...[
+                        ChangeCommuteModeCard(
+                          selectedMode: state.selectedTransportMode,
+                          onModeSelected: _changeCommuteMode,
+                          onClose: _viewModel.dismissChangeModeCard,
                         ),
-                      if (homeMapAsync.hasError)
-                        Positioned.fill(
-                          child: Center(
-                            child: Text(
-                              'Failed to load facilities: ${homeMapAsync.error}',
-                            ),
-                          ),
-                        ),
-                      if (_showLegend)
-                        const Positioned(
-                          left: 16,
-                          bottom: 16,
-                          child: MapLegend(),
-                        ),
-                      Positioned(
-                        top: 12,
-                        left: 16,
-                        child: MapControlButton(
-                          icon: Icons.menu,
-                          onTap: () => _showComingSoon('Menu'),
-                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      ViewResultsButton(onTap: _viewModel.reopenAnalysisSheet),
+                    ],
+                  ),
+                ),
+              if (state?.originSelection != null && _popupAnchor != null)
+                _AnchoredPopup(
+                  anchor: _popupAnchor!,
+                  maxWidth: constraints.maxWidth,
+                  child: AccessOriginPopup(
+                    title: state!.originSelection!.title,
+                    selectedMode: state.selectedTransportMode,
+                    onModeSelected: _viewModel.setSelectedMode,
+                    analyzeLabel: state.originSelection!.analyzeLabel,
+                    onAnalyzeAccess: () => _runAnalysis(
+                      state.originSelection!.point,
+                      followsUser: state.originSelection!.followsUser,
+                    ),
+                    onGetHelpFast: () {
+                      _clearPopup();
+                      _openGetHelpSheet();
+                    },
+                    onClose: _clearPopup,
+                  ),
+                ),
+              if (state?.selectedFacility != null && _popupAnchor != null)
+                _AnchoredPopup(
+                  anchor: _popupAnchor!,
+                  maxWidth: constraints.maxWidth,
+                  child: FacilityPopupCard(
+                    facility: state!.selectedFacility!,
+                    onViewInfo: () => _viewFacilityInfo(state.selectedFacility!),
+                    onAnalyzeAccess: () => _runAnalysis(
+                      GeoPoint(
+                        latitude: state.selectedFacility!.latitude,
+                        longitude: state.selectedFacility!.longitude,
                       ),
-                      const Positioned(
-                        top: 12,
-                        left: 68,
-                        right: 16,
-                        child: HomeMapHeader(),
-                      ),
-                      Positioned(
-                        top: 64,
-                        left: 0,
-                        right: 0,
-                        child: FacilityFilterRow(
-                          selected: _selectedFilter,
-                          onSelected: (filter) => setState(() => _selectedFilter = filter),
-                        ),
-                      ),
-                      Positioned(
-                        right: 16,
-                        top: 116,
-                        child: Column(
-                          children: [
-                            MapControlButton(
-                              icon: Icons.my_location,
-                              onTap: _recenterOnUser,
-                            ),
-                            const SizedBox(height: 8),
-                            MapControlButton(
-                              icon: Icons.home,
-                              onTap: _resetToDefaultView,
-                            ),
-                            const SizedBox(height: 8),
-                            MapControlButton(
-                              icon: Icons.search,
-                              onTap: () => _showComingSoon('Search'),
-                            ),
-                            const SizedBox(height: 8),
-                            MapControlButton(
-                              icon: Icons.near_me,
-                              onTap: () => _showComingSoon('Route planner'),
-                            ),
-                            const SizedBox(height: 8),
-                            MapControlButton(
-                              icon: Icons.list,
-                              active: _showLegend,
-                              onTap: _toggleLegend,
-                            ),
-                            const SizedBox(height: 8),
-                            MapControlButton(
-                              icon: Icons.delete_outline,
-                              iconColor: AppColors.danger,
-                              onTap: _cancelAnalysis,
-                            ),
-                            const SizedBox(height: 8),
-                            MapControlButton(
-                              icon: Icons.traffic,
-                              onTap: () => _showComingSoon('Live traffic'),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Positioned(
-                        right: 16,
-                        bottom: 16,
-                        child: _showSosMenu
-                            ? SosActionMenu(
-                                onReportIncident: _openTriageEntry,
-                                onCallForHelp: _call112,
-                                onClose: _toggleSosMenu,
-                              )
-                            : FloatingActionButton(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadiusGeometry.circular(200),
-                                ),
-                                backgroundColor: AppColors.danger,
-                                onPressed: _toggleSosMenu,
-                                child: const Text(
-                                  '🚨',
-                                  style: TextStyle(fontSize: 26),
-                                ),
-                              ),
-                      ),
-                      if (showFloatingAnalysisControls)
-                        Positioned(
-                          left: 16,
-                          right: 16,
-                          bottom: 16,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (_showChangeModeCard) ...[
-                                ChangeCommuteModeCard(
-                                  selectedMode: _selectedTransportMode,
-                                  onModeSelected: _changeCommuteMode,
-                                  onClose: _dismissChangeModeCard,
-                                ),
-                                const SizedBox(height: 8),
-                              ],
-                              ViewResultsButton(onTap: _reopenAnalysisSheet),
-                            ],
-                          ),
-                        ),
-                      if (_originPopup != null)
-                        _AnchoredPopup(
-                          anchor: _originPopup!.anchor,
-                          maxWidth: constraints.maxWidth,
-                          child: AccessOriginPopup(
-                            title: _originPopup!.title,
-                            selectedMode: _selectedTransportMode,
-                            onModeSelected: (mode) =>
-                                setState(() => _selectedTransportMode = mode),
-                            analyzeLabel: _originPopup!.analyzeLabel,
-                            onAnalyzeAccess: () => _runAnalysis(
-                              _originPopup!.point,
-                              followsUser: _originPopup!.followsUser,
-                            ),
-                            onGetHelpFast: () {
-                              setState(() => _originPopup = null);
-                              _openGetHelpSheet();
-                            },
-                            onClose: () => setState(() => _originPopup = null),
-                          ),
-                        ),
-                      if (_facilityPopup != null)
-                        _AnchoredPopup(
-                          anchor: _facilityPopup!.anchor,
-                          maxWidth: constraints.maxWidth,
-                          child: FacilityPopupCard(
-                            facility: _facilityPopup!.facility,
-                            onViewInfo: () =>
-                                _viewFacilityInfo(_facilityPopup!.facility),
-                            onAnalyzeAccess: () => _runAnalysis(
-                              GeoPoint(
-                                latitude: _facilityPopup!.facility.latitude,
-                                longitude: _facilityPopup!.facility.longitude,
-                              ),
-                            ),
-                            onGetDirections: () => _getDirectionsToFacility(
-                              _facilityPopup!.facility,
-                            ),
-                            onSaveFacility: _saveFacility,
-                            onClose: () =>
-                                setState(() => _facilityPopup = null),
-                          ),
-                        ),
-                      if (_showAnalysisSheet && _activeAnalysis != null)
-                        Positioned.fill(
-                          child: AccessAnalysisSheet(
-                            result: _activeAnalysis!,
-                            onMapRoute: (destination) async {
-                              final origin = await _resolveRouteOrigin();
-                              if (origin != null) {
-                                await _mapRouteTo(origin, destination);
-                              }
-                            },
-                            onDirections: (destination) async {
-                              final origin = await _resolveRouteOrigin();
-                              if (origin != null) {
-                                await _getDirectionsTo(origin, destination);
-                              }
-                            },
-                            onClose: _dismissAnalysisSheet,
-                          ),
-                        ),
-              ],
-            );
-          },
-        ),
+                    ),
+                    onGetDirections: () => _getDirectionsToFacility(state.selectedFacility!),
+                    onSaveFacility: _saveFacility,
+                    onClose: _clearPopup,
+                  ),
+                ),
+              if (state?.showAnalysisSheet == true && state?.activeAnalysis != null)
+                Positioned.fill(
+                  child: AccessAnalysisSheet(
+                    result: state!.activeAnalysis!,
+                    onMapRoute: (destination) async {
+                      final origin = await _viewModel.resolveRouteOrigin();
+                      if (origin != null) await _mapRouteTo(origin, destination);
+                    },
+                    onDirections: (destination) async {
+                      final origin = await _viewModel.resolveRouteOrigin();
+                      if (origin != null) await _getDirectionsTo(origin, destination);
+                    },
+                    onClose: _viewModel.dismissAnalysisSheet,
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -859,11 +429,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 /// the map's local coordinate space), horizontally centered on it and
 /// clamped within [maxWidth].
 class _AnchoredPopup extends StatelessWidget {
-  const _AnchoredPopup({
-    required this.anchor,
-    required this.maxWidth,
-    required this.child,
-  });
+  const _AnchoredPopup({required this.anchor, required this.maxWidth, required this.child});
 
   final Offset anchor;
   final double maxWidth;
@@ -880,9 +446,7 @@ class _AnchoredPopup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxLeft = maxWidth - _popupWidth - 8 > 8
-        ? maxWidth - _popupWidth - 8
-        : 8.0;
+    final maxLeft = maxWidth - _popupWidth - 8 > 8 ? maxWidth - _popupWidth - 8 : 8.0;
     final left = (anchor.dx - _popupWidth / 2).clamp(8.0, maxLeft);
     final top = anchor.dy < _minAnchorY ? _minAnchorY : anchor.dy;
     return Positioned(
