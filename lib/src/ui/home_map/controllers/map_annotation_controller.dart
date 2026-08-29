@@ -89,6 +89,7 @@ Future<Uint8List> _renderLocationPinImage() async {
 class MapAnnotationController {
   mapbox.MapboxMap? _map;
   mapbox.PointAnnotationManager? _facilityManager;
+  mapbox.PointAnnotationManager? _originManager;
   mapbox.PolygonAnnotationManager? _polygonManager;
   mapbox.PolylineAnnotationManager? _polylineManager;
 
@@ -96,6 +97,9 @@ class MapAnnotationController {
   FacilityCategory? _lastAppliedFilter;
   final Map<String, Facility> _annotationFacilities = {};
   final Map<FacilityCategory, Uint8List> _markerImages = {};
+
+  GeoPoint? _lastDroppedPin;
+  Uint8List? _pinDropImage;
 
   Facility? facilityForAnnotation(String annotationId) => _annotationFacilities[annotationId];
 
@@ -109,6 +113,8 @@ class MapAnnotationController {
     final facilityManager = await mapboxMap.annotations.createPointAnnotationManager();
     _facilityManager = facilityManager;
     facilityManager.tapEvents(onTap: onFacilityTap);
+
+    _originManager = await mapboxMap.annotations.createPointAnnotationManager();
 
     _polylineManager = await mapboxMap.annotations.createPolylineAnnotationManager();
 
@@ -172,6 +178,35 @@ class MapAnnotationController {
         _annotationFacilities[annotation.id] = visible[index];
       }
     }
+  }
+
+  /// Renders (or clears, when [point] is null) a pin marker at a dropped
+  /// point — a real map annotation anchored to the coordinate, matching how
+  /// facility markers work, rather than a screen-space overlay that doesn't
+  /// track the map. Used only for a dropped pin, not "Your Location" (which
+  /// already has its own live location puck) or a tapped facility (which
+  /// already has its own permanent marker).
+  Future<void> syncDroppedPin(GeoPoint? point) async {
+    final manager = _originManager;
+    if (manager == null) return;
+    if (identical(point, _lastDroppedPin)) return;
+    _lastDroppedPin = point;
+
+    await manager.deleteAll();
+    if (point == null) return;
+
+    await manager.create(
+      mapbox.PointAnnotationOptions(
+        geometry: mapboxPointFrom(point),
+        image: await _pinDropMarkerImage(),
+        iconSize: 0.6,
+        iconAnchor: mapbox.IconAnchor.BOTTOM,
+      ),
+    );
+  }
+
+  Future<Uint8List> _pinDropMarkerImage() async {
+    return _pinDropImage ??= await _renderLocationPinImage();
   }
 
   Future<void> renderIsochrone(List<IsochroneRing> rings) async {
