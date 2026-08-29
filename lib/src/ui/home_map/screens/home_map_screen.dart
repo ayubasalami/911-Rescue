@@ -254,6 +254,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
     final showFloatingAnalysisControls = state?.activeAnalysis != null && state?.showAnalysisSheet != true;
 
+    // The map itself is full-bleed behind the status bar/notch on purpose —
+    // only the floating controls need to stay clear of it, so they get
+    // nudged down/up by the system inset instead of the whole body being
+    // wrapped in a SafeArea (which would inset the map too).
+    final viewPadding = MediaQuery.paddingOf(context);
+    final topInset = viewPadding.top;
+    final bottomInset = viewPadding.bottom;
+
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -282,15 +290,16 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 Positioned.fill(
                   child: Center(child: Text('Failed to load facilities: ${homeMapAsync.error}')),
                 ),
-              if (state?.showLegend ?? true) const Positioned(left: 16, bottom: 16, child: MapLegend()),
+              if (state?.showLegend ?? true)
+                Positioned(left: 16, bottom: 16 + bottomInset, child: const MapLegend()),
               Positioned(
-                top: 12,
+                top: 6 + topInset,
                 left: 16,
                 child: MapControlButton(icon: Icons.menu, onTap: () => _showComingSoon('Menu')),
               ),
-              const Positioned(top: 12, left: 68, right: 16, child: HomeMapHeader()),
+              Positioned(top: 6 + topInset, left: 68, right: 16, child: const HomeMapHeader()),
               Positioned(
-                top: 64,
+                top: 58 + topInset,
                 left: 0,
                 right: 0,
                 child: FacilityFilterRow(
@@ -300,7 +309,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               ),
               Positioned(
                 right: 16,
-                top: 116,
+                top: 110 + topInset,
                 child: Column(
                   children: [
                     MapControlButton(icon: Icons.my_location, onTap: _recenterOnUser),
@@ -329,7 +338,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               ),
               Positioned(
                 right: 16,
-                bottom: 16,
+                bottom: 16 + bottomInset,
                 child: (state?.showSosMenu ?? false)
                     ? SosActionMenu(
                         onReportIncident: _openTriageEntry,
@@ -347,7 +356,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 Positioned(
                   left: 16,
                   right: 16,
-                  bottom: 16,
+                  bottom: 16 + bottomInset,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -368,6 +377,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 _AnchoredPopup(
                   anchor: _popupAnchor!,
                   maxWidth: constraints.maxWidth,
+                  topInset: topInset,
                   child: AccessOriginPopup(
                     title: state!.originSelection!.title,
                     selectedMode: state.selectedTransportMode,
@@ -388,6 +398,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 _AnchoredPopup(
                   anchor: _popupAnchor!,
                   maxWidth: constraints.maxWidth,
+                  topInset: topInset,
                   child: FacilityPopupCard(
                     facility: state!.selectedFacility!,
                     onViewInfo: () => _viewFacilityInfo(state.selectedFacility!),
@@ -429,26 +440,39 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 /// the map's local coordinate space), horizontally centered on it and
 /// clamped within [maxWidth].
 class _AnchoredPopup extends StatelessWidget {
-  const _AnchoredPopup({required this.anchor, required this.maxWidth, required this.child});
+  const _AnchoredPopup({
+    required this.anchor,
+    required this.maxWidth,
+    required this.topInset,
+    required this.child,
+  });
 
   final Offset anchor;
   final double maxWidth;
+
+  /// The system status bar/notch inset — the map (and so [anchor], which
+  /// comes from the map's own pixel space) runs full-bleed behind it, but
+  /// the popup itself must not.
+  final double topInset;
+
   final Widget child;
 
   static const _popupWidth = 260.0;
 
   /// The popup's content can run to roughly this tall (mode picker + two
-  /// action buttons); keeping the anchor at least this far from the map
-  /// area's top edge guarantees the popup always renders fully inside the
-  /// map, never reaching up behind the app bar, regardless of how close to
-  /// the top of the visible map the anchor point itself ends up.
+  /// action buttons); keeping the anchor at least this far below the map
+  /// area's top edge (plus [topInset]) guarantees the popup always renders
+  /// fully inside the map, never reaching up behind the status bar or the
+  /// floating header, regardless of how close to the top of the visible map
+  /// the anchor point itself ends up.
   static const _minAnchorY = 240.0;
 
   @override
   Widget build(BuildContext context) {
     final maxLeft = maxWidth - _popupWidth - 8 > 8 ? maxWidth - _popupWidth - 8 : 8.0;
     final left = (anchor.dx - _popupWidth / 2).clamp(8.0, maxLeft);
-    final top = anchor.dy < _minAnchorY ? _minAnchorY : anchor.dy;
+    final minAnchorY = _minAnchorY + topInset;
+    final top = anchor.dy < minAnchorY ? minAnchorY : anchor.dy;
     return Positioned(
       left: left,
       top: top,
