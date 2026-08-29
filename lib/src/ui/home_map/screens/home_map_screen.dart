@@ -69,6 +69,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// (with fresher data) follows almost immediately.
   bool _syncingPopupAnchor = false;
 
+  /// The map's starting camera position, computed once and reused — not
+  /// business state, just a cached widget config value. `CameraViewportState`
+  /// has no value equality, so a fresh instance built on every `build()`
+  /// call is never `==` to the previous one; the plugin treats that as "the
+  /// viewport changed" and snaps the camera back to it, discarding wherever
+  /// the user has since panned/flown to (e.g. right after dropping a pin).
+  mapbox.CameraViewportState? _initialViewport;
+
   HomeMapViewModel get _viewModel =>
       ref.read(homeMapViewModelProvider.notifier);
 
@@ -415,7 +423,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               data: (s) => _canRenderRealMap
                   ? mapbox.MapWidget(
                       styleUri: mapbox.MapboxStyles.MAPBOX_STREETS,
-                      viewport: mapbox.CameraViewportState(
+                      viewport: _initialViewport ??= mapbox.CameraViewportState(
                         center: mapboxPointFrom(s.center),
                         zoom: 12,
                       ),
