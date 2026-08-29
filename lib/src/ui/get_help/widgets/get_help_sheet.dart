@@ -57,7 +57,8 @@ class _GetHelpSheetState extends State<GetHelpSheet> {
                 child: AppButton(
                   label: 'Ping for Help',
                   icon: Icons.sensors,
-                  variant: _mode == _HelpMode.ping ? AppButtonVariant.danger : AppButtonVariant.outline,
+                  variant: AppButtonVariant.danger,
+                  filled: _mode == _HelpMode.ping,
                   onPressed: () => setState(() => _mode = _HelpMode.ping),
                 ),
               ),

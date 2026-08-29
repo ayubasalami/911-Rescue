@@ -14,7 +14,7 @@ abstract final class AppColors {
 }
 
 abstract final class AppRadii {
-  static const sm = 6.0;
+  static const sm = 8.0;
   static const md = 12.0;
   static const lg = 20.0;
   static const full = 999.0;
@@ -46,6 +46,19 @@ class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadii.sm),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        ),
+      ),
+      // Material 3's default OutlinedButton is a full stadium/pill shape —
+      // without this override it visibly mismatches the rounded-rect
+      // ElevatedButtons above. Any bare OutlinedButton (e.g. one with
+      // custom composed content that doesn't fit AppButton) still gets the
+      // right radius for free.
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadii.sm),
           ),

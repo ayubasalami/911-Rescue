@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/facility.dart';
+import '../../core/widgets/app_button.dart';
 import 'map_legend.dart';
 
 /// The popup shown when a facility marker is tapped — mirrors the web
@@ -112,35 +113,32 @@ class FacilityPopupCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            SizedBox(width: double.infinity, child: OutlinedButton(onPressed: onViewInfo, child: const Text('View Info'))),
+            SizedBox(
+              width: double.infinity,
+              child: AppButton(label: 'View Info', onPressed: onViewInfo, filled: false),
+            ),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
+              child: AppButton(
+                label: 'Analyze Access',
                 onPressed: onAnalyzeAccess,
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
-                child: const Text('Analyze Access'),
+                variant: AppButtonVariant.success,
               ),
             ),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
-                onPressed: onGetDirections,
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-                child: const Text('Get Directions'),
-              ),
+              child: AppButton(label: 'Get Directions', onPressed: onGetDirections),
             ),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: OutlinedButton(
+              child: AppButton(
+                label: '☆ Save Facility',
                 onPressed: onSaveFacility,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.warning,
-                  side: const BorderSide(color: AppColors.warning),
-                ),
-                child: const Text('☆ Save Facility'),
+                variant: AppButtonVariant.warning,
+                filled: false,
               ),
             ),
           ],

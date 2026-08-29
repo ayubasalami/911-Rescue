@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
+import '../../core/widgets/app_button.dart';
 
 String _formatPopulation(int value) {
   final digits = value.toString();
@@ -261,9 +262,9 @@ class _FacilityRow extends StatelessWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Expanded(child: OutlinedButton(onPressed: onMapRoute, child: const Text('Map Route'))),
+                    Expanded(child: AppButton(label: 'Map Route', onPressed: onMapRoute, filled: false)),
                     const SizedBox(width: 8),
-                    Expanded(child: OutlinedButton(onPressed: onDirections, child: const Text('Directions'))),
+                    Expanded(child: AppButton(label: 'Directions', onPressed: onDirections, filled: false)),
                   ],
                 ),
               ],

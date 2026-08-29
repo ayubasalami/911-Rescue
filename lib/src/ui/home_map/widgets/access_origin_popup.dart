@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
+import '../../core/widgets/app_button.dart';
 import 'transport_mode_button.dart';
 
 /// The popup shown for every Accessibility Analyzer origin on the web
@@ -78,20 +79,20 @@ class AccessOriginPopup extends StatelessWidget {
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
+              child: AppButton(
+                label: analyzeLabel,
                 onPressed: onAnalyzeAccess,
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
-                child: Text(analyzeLabel),
+                variant: AppButtonVariant.success,
               ),
             ),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton.icon(
+              child: AppButton(
+                label: 'Get Help Fast',
                 onPressed: onGetHelpFast,
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-                icon: const Icon(Icons.warning_amber_rounded, size: 18),
-                label: const Text('Get Help Fast'),
+                variant: AppButtonVariant.danger,
+                icon: Icons.warning_amber_rounded,
               ),
             ),
           ],
