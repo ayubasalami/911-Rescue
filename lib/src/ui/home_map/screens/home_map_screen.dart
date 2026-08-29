@@ -21,6 +21,7 @@ import '../widgets/change_commute_mode_card.dart';
 import '../widgets/facility_filter_row.dart';
 import '../widgets/facility_popup_card.dart';
 import '../widgets/facility_summary_sheet.dart';
+import '../widgets/home_drawer.dart';
 import '../widgets/home_map_header.dart';
 import '../widgets/map_control_button.dart';
 import '../widgets/map_legend.dart';
@@ -46,6 +47,7 @@ class HomeMapScreen extends ConsumerStatefulWidget {
 /// [MapAnnotationController] for why the split is drawn there.
 class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   final _mapController = MapAnnotationController();
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   /// The on-screen anchor for whichever popup is showing (origin or
   /// facility selection, from [HomeMapState]) — a derived pixel position,
@@ -230,10 +232,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     await _mapController.clearIsochroneAndRoute();
   }
 
+  /// The facility list to actually render — empty when the drawer's
+  /// "Emergency Facilities" layer toggle is off, independent of [selectedFilter].
+  List<Facility> _visibleFacilities(HomeMapState? state) =>
+      (state?.showEmergencyFacilities ?? true) ? (state?.facilities ?? const []) : const [];
+
   Future<void> _onMapCreated(mapbox.MapboxMap mapboxMap) async {
     await _mapController.onMapCreated(mapboxMap, onFacilityTap: _onFacilityTapped);
     final state = ref.read(homeMapViewModelProvider).value;
-    await _mapController.syncFacilityPins(state?.facilities ?? const [], state?.selectedFilter);
+    await _mapController.syncFacilityPins(_visibleFacilities(state), state?.selectedFilter);
   }
 
   @override
@@ -241,7 +248,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final homeMapAsync = ref.watch(homeMapViewModelProvider);
     final state = homeMapAsync.value;
     if (state != null) {
-      unawaited(_mapController.syncFacilityPins(state.facilities, state.selectedFilter));
+      unawaited(_mapController.syncFacilityPins(_visibleFacilities(state), state.selectedFilter));
     }
 
     ref.listen(homeMapViewModelProvider, (previous, next) {
@@ -263,6 +270,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final bottomInset = viewPadding.bottom;
 
     return Scaffold(
+      key: _scaffoldKey,
+      drawer: HomeDrawer(onUseCurrentLocation: _recenterOnUser, onClearAnalysis: _cancelAnalysis),
       body: LayoutBuilder(
         builder: (context, constraints) {
           return Stack(
@@ -295,7 +304,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               Positioned(
                 top: 6 + topInset,
                 left: 16,
-                child: MapControlButton(icon: Icons.menu, onTap: () => _showComingSoon('Menu')),
+                child: MapControlButton(
+                  icon: Icons.menu,
+                  onTap: () => _scaffoldKey.currentState?.openDrawer(),
+                ),
               ),
               Positioned(top: 6 + topInset, left: 68, right: 16, child: const HomeMapHeader()),
               Positioned(

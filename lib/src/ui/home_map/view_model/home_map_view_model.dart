@@ -60,6 +60,8 @@ class HomeMapState {
     this.showChangeModeCard = true,
     this.showLegend = true,
     this.showSosMenu = false,
+    this.showEmergencyFacilities = true,
+    this.analysisThresholdMinutes = kAccessAnalysisThresholdMinutes,
     this.originSelection,
     this.selectedFacility,
     this.errorMessage,
@@ -71,6 +73,13 @@ class HomeMapState {
 
   final FacilityCategory? selectedFilter;
   final TransportMode selectedTransportMode;
+
+  /// Master visibility for facility markers — the drawer's "Emergency
+  /// Facilities" layer toggle, independent of [selectedFilter].
+  final bool showEmergencyFacilities;
+
+  /// The Accessibility Analyzer's Max Time Threshold, set from the drawer.
+  final int analysisThresholdMinutes;
 
   final AccessAnalysisResult? activeAnalysis;
   final GeoPoint? activeAnalysisOrigin;
@@ -104,6 +113,8 @@ class HomeMapState {
     bool? showChangeModeCard,
     bool? showLegend,
     bool? showSosMenu,
+    bool? showEmergencyFacilities,
+    int? analysisThresholdMinutes,
     Object? originSelection = _unset,
     Object? selectedFacility = _unset,
     Object? errorMessage = _unset,
@@ -127,6 +138,8 @@ class HomeMapState {
       showChangeModeCard: showChangeModeCard ?? this.showChangeModeCard,
       showLegend: showLegend ?? this.showLegend,
       showSosMenu: showSosMenu ?? this.showSosMenu,
+      showEmergencyFacilities: showEmergencyFacilities ?? this.showEmergencyFacilities,
+      analysisThresholdMinutes: analysisThresholdMinutes ?? this.analysisThresholdMinutes,
       originSelection: identical(originSelection, _unset)
           ? this.originSelection
           : originSelection as OriginSelection?,
@@ -219,6 +232,12 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
 
   void dismissChangeModeCard() => _update((s) => s.copyWith(showChangeModeCard: false));
 
+  void toggleEmergencyFacilitiesLayer() =>
+      _update((s) => s.copyWith(showEmergencyFacilities: !s.showEmergencyFacilities));
+
+  void setAnalysisThreshold(int minutes) =>
+      _update((s) => s.copyWith(analysisThresholdMinutes: minutes));
+
   void dismissAnalysisSheet() => _update((s) => s.copyWith(showAnalysisSheet: false));
 
   void reopenAnalysisSheet() => _update((s) => s.copyWith(showAnalysisSheet: true));
@@ -237,7 +256,11 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     try {
       result = await ref
           .read(accessAnalysisRepositoryProvider)
-          .analyze(origin: origin, mode: state.value?.selectedTransportMode ?? TransportMode.driving);
+          .analyze(
+            origin: origin,
+            mode: state.value?.selectedTransportMode ?? TransportMode.driving,
+            thresholdMinutes: state.value?.analysisThresholdMinutes ?? kAccessAnalysisThresholdMinutes,
+          );
     } catch (error) {
       _setError('Could not run accessibility analysis: $error');
       return;

@@ -23,6 +23,7 @@ class AccessAnalysisRepository {
   Future<AccessAnalysisResult> analyze({
     required GeoPoint origin,
     required TransportMode mode,
+    int thresholdMinutes = kAccessAnalysisThresholdMinutes,
   }) async {
     final facilities = await _facilityRepository.nearbyFacilities(
       latitude: origin.latitude,
@@ -54,7 +55,7 @@ class AccessAnalysisRepository {
         ),
       );
       if (closest == null || duration < closest.eta) closest = entry;
-      if (duration.inMinutes <= kAccessAnalysisThresholdMinutes) reachable.add(entry);
+      if (duration.inMinutes <= thresholdMinutes) reachable.add(entry);
     }
 
     final byBand = <TimeBand, List<ReachableFacility>>{};
@@ -72,7 +73,7 @@ class AccessAnalysisRepository {
 
     return AccessAnalysisResult(
       mode: mode,
-      thresholdMinutes: kAccessAnalysisThresholdMinutes,
+      thresholdMinutes: thresholdMinutes,
       reachableCount: reachable.length,
       population: population,
       closest: closest,

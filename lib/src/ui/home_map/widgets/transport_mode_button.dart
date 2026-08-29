@@ -12,6 +12,14 @@ extension TransportModeEmoji on TransportMode {
         TransportMode.motorbike => '🏍️',
         TransportMode.cycling => '🚲',
       };
+
+  /// Matches the web platform's Commute Mode dropdown option text.
+  String get dropdownLabel => switch (this) {
+        TransportMode.driving => 'Driving (Lagos Traffic)',
+        TransportMode.walking => 'Walking',
+        TransportMode.motorbike => 'Motorbike',
+        TransportMode.cycling => 'Cycling',
+      };
 }
 
 class TransportModeButton extends StatelessWidget {
