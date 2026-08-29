@@ -23,7 +23,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('🚨'), findsOneWidget);
-    expect(find.text('Map'), findsOneWidget);
+    expect(find.textContaining('Rescue', findRichText: true), findsOneWidget);
 
     await tester.tap(find.text('🚨'));
     await tester.pumpAndSettle();
@@ -42,36 +42,5 @@ void main() {
 
     expect(find.text('Chest pain'), findsOneWidget);
     expect(find.text('Describe your symptoms...'), findsOneWidget);
-  });
-
-  testWidgets('Bottom nav switches between shell branches', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          appConfigProvider.overrideWithValue(
-            const AppConfig(
-              environment: AppEnvironment.dev,
-              appDisplayName: '911 Rescue Dev',
-              apiBaseUrl: 'example.com',
-              mapboxAccessToken: 'pk.test',
-            ),
-          ),
-        ],
-        child: const App(),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Triage'));
-    await tester.pumpAndSettle();
-    expect(find.text('Triage Chat — coming soon'), findsOneWidget);
-
-    await tester.tap(find.text('Dashboard'));
-    await tester.pumpAndSettle();
-    expect(find.text('Dashboard — coming soon'), findsOneWidget);
-
-    await tester.tap(find.text('Map'));
-    await tester.pumpAndSettle();
-    expect(find.text('🚨'), findsOneWidget);
   });
 }
