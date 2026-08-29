@@ -27,11 +27,11 @@ Future<void> _openLink(BuildContext context, String url) async {
 /// Analyzer defaults, account), reused as a slide-in drawer on mobile rather
 /// than a plain links menu — opened from the map's hamburger button.
 ///
-/// Search, "Lagos Boundary," "Live Traffic," "How to Use This Map," and
-/// "Data Sources & Credits" are UI-only for now (no backing data/logic
-/// exists yet); the facility-category filter, the Emergency Facilities
-/// visibility toggle, the Accessibility Analyzer defaults, Clear Analysis,
-/// and every footer link are wired to real state/actions.
+/// Search, "Lagos Boundary," "How to Use This Map," and "Data Sources &
+/// Credits" are UI-only for now (no backing data/logic exists yet); the
+/// facility-category filter, the Emergency Facilities and Live Traffic
+/// layer toggles, the Accessibility Analyzer defaults, Clear Analysis, and
+/// every footer link are wired to real state/actions.
 class HomeDrawer extends ConsumerWidget {
   const HomeDrawer({super.key, required this.onUseCurrentLocation, required this.onClearAnalysis});
 
@@ -101,8 +101,9 @@ class HomeDrawer extends ConsumerWidget {
               onFilterChanged: notifier.selectFilter,
               showEmergencyFacilities: state?.showEmergencyFacilities ?? true,
               onToggleEmergencyFacilities: notifier.toggleEmergencyFacilitiesLayer,
+              showLiveTraffic: state?.showLiveTraffic ?? false,
+              onToggleLiveTraffic: notifier.toggleLiveTrafficLayer,
               onLagosBoundaryTap: () => _comingSoon(context, 'Lagos Boundary layer'),
-              onLiveTrafficTap: () => _comingSoon(context, 'Live traffic layer'),
             ),
             const Divider(height: 1),
             _AnalyzerDefaultsSection(
@@ -226,16 +227,18 @@ class _MapLayersSection extends StatelessWidget {
     required this.onFilterChanged,
     required this.showEmergencyFacilities,
     required this.onToggleEmergencyFacilities,
+    required this.showLiveTraffic,
+    required this.onToggleLiveTraffic,
     required this.onLagosBoundaryTap,
-    required this.onLiveTrafficTap,
   });
 
   final FacilityCategory? selectedFilter;
   final ValueChanged<FacilityCategory?> onFilterChanged;
   final bool showEmergencyFacilities;
   final VoidCallback onToggleEmergencyFacilities;
+  final bool showLiveTraffic;
+  final VoidCallback onToggleLiveTraffic;
   final VoidCallback onLagosBoundaryTap;
-  final VoidCallback onLiveTrafficTap;
 
   @override
   Widget build(BuildContext context) {
@@ -273,7 +276,11 @@ class _MapLayersSection extends StatelessWidget {
             value: showEmergencyFacilities,
             onChanged: (_) => onToggleEmergencyFacilities(),
           ),
-          _LayerRow(label: 'Live Traffic', value: false, onChanged: (_) => onLiveTrafficTap()),
+          _LayerRow(
+            label: 'Live Traffic',
+            value: showLiveTraffic,
+            onChanged: (_) => onToggleLiveTraffic(),
+          ),
         ],
       ),
     );
@@ -289,16 +296,20 @@ class _LayerRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(color: AppColors.backgroundCanvas, borderRadius: BorderRadius.circular(AppRadii.sm)),
-      child: CheckboxListTile(
-        value: value,
-        onChanged: onChanged,
-        controlAffinity: ListTileControlAffinity.trailing,
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-        title: Text(label),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: AppColors.backgroundCanvas,
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        clipBehavior: Clip.antiAlias,
+        child: CheckboxListTile(
+          value: value,
+          onChanged: onChanged,
+          controlAffinity: ListTileControlAffinity.trailing,
+          dense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          title: Text(label),
+        ),
       ),
     );
   }

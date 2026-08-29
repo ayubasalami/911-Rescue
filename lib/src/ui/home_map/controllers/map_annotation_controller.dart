@@ -101,6 +101,11 @@ class MapAnnotationController {
   GeoPoint? _lastDroppedPin;
   Uint8List? _pinDropImage;
 
+  static const _trafficSourceId = 'traffic-source';
+  static const _trafficLayerId = 'traffic-layer';
+  bool _trafficLayerAdded = false;
+  bool? _lastTrafficVisible;
+
   Facility? facilityForAnnotation(String annotationId) => _annotationFacilities[annotationId];
 
   Future<void> onMapCreated(
@@ -207,6 +212,49 @@ class MapAnnotationController {
 
   Future<Uint8List> _pinDropMarkerImage() async {
     return _pinDropImage ??= await _renderLocationPinImage();
+  }
+
+  /// Shows or hides Mapbox's live traffic layer — added once, on top of the
+  /// current style, then just toggled visible/hidden afterward rather than
+  /// re-added each time. Unlike the rest of this controller, this is a real
+  /// network-backed Mapbox tileset (`mapbox://mapbox.mapbox-traffic-v1`),
+  /// not a purely local operation.
+  Future<void> setTrafficVisible(bool visible) async {
+    final map = _map;
+    if (map == null || _lastTrafficVisible == visible) return;
+    _lastTrafficVisible = visible;
+
+    if (!_trafficLayerAdded) {
+      if (!visible) return;
+      await map.style.addSource(
+        mapbox.VectorSource(id: _trafficSourceId, url: 'mapbox://mapbox.mapbox-traffic-v1'),
+      );
+      await map.style.addLayer(
+        mapbox.LineLayer(
+          id: _trafficLayerId,
+          sourceId: _trafficSourceId,
+          sourceLayer: 'traffic',
+          lineWidth: 2.5,
+          lineColorExpression: const [
+            'match',
+            ['get', 'congestion'],
+            'low', '#2ECC71',
+            'moderate', '#F1C40F',
+            'heavy', '#E67E22',
+            'severe', '#C0392B',
+            '#2ECC71',
+          ],
+        ),
+      );
+      _trafficLayerAdded = true;
+      return;
+    }
+
+    await map.style.setStyleLayerProperty(
+      _trafficLayerId,
+      'visibility',
+      visible ? 'visible' : 'none',
+    );
   }
 
   Future<void> renderIsochrone(List<IsochroneRing> rings) async {

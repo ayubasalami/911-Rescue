@@ -61,6 +61,7 @@ class HomeMapState {
     this.showLegend = true,
     this.showSosMenu = false,
     this.showEmergencyFacilities = true,
+    this.showLiveTraffic = false,
     this.analysisThresholdMinutes = kAccessAnalysisThresholdMinutes,
     this.originSelection,
     this.selectedFacility,
@@ -77,6 +78,9 @@ class HomeMapState {
   /// Master visibility for facility markers — the drawer's "Emergency
   /// Facilities" layer toggle, independent of [selectedFilter].
   final bool showEmergencyFacilities;
+
+  /// The drawer's/side-button's "Live Traffic" map layer toggle.
+  final bool showLiveTraffic;
 
   /// The Accessibility Analyzer's Max Time Threshold, set from the drawer.
   final int analysisThresholdMinutes;
@@ -114,6 +118,7 @@ class HomeMapState {
     bool? showLegend,
     bool? showSosMenu,
     bool? showEmergencyFacilities,
+    bool? showLiveTraffic,
     int? analysisThresholdMinutes,
     Object? originSelection = _unset,
     Object? selectedFacility = _unset,
@@ -139,6 +144,7 @@ class HomeMapState {
       showLegend: showLegend ?? this.showLegend,
       showSosMenu: showSosMenu ?? this.showSosMenu,
       showEmergencyFacilities: showEmergencyFacilities ?? this.showEmergencyFacilities,
+      showLiveTraffic: showLiveTraffic ?? this.showLiveTraffic,
       analysisThresholdMinutes: analysisThresholdMinutes ?? this.analysisThresholdMinutes,
       originSelection: identical(originSelection, _unset)
           ? this.originSelection
@@ -234,6 +240,9 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
 
   void toggleEmergencyFacilitiesLayer() =>
       _update((s) => s.copyWith(showEmergencyFacilities: !s.showEmergencyFacilities));
+
+  void toggleLiveTrafficLayer() =>
+      _update((s) => s.copyWith(showLiveTraffic: !s.showLiveTraffic));
 
   void setAnalysisThreshold(int minutes) =>
       _update((s) => s.copyWith(analysisThresholdMinutes: minutes));

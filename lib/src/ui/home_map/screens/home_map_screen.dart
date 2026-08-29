@@ -385,6 +385,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         ),
       );
       unawaited(_mapController.syncDroppedPin(_droppedPinPoint(state)));
+      unawaited(_mapController.setTrafficVisible(state.showLiveTraffic));
     }
 
     ref.listen(homeMapViewModelProvider, (previous, next) {
@@ -511,7 +512,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 const SizedBox(height: 8),
                 MapControlButton(
                   icon: Icons.traffic,
-                  onTap: () => _showComingSoon('Live traffic'),
+                  active: state?.showLiveTraffic ?? false,
+                  onTap: _viewModel.toggleLiveTrafficLayer,
                 ),
               ],
             ),
