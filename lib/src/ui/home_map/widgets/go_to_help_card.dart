@@ -26,8 +26,11 @@ class GoToHelpCard extends StatelessWidget {
     this.tracking = false,
     this.accuracyMeters,
     this.voiceEnabled = false,
+    this.sosConfirming = false,
     this.onStop,
     this.onViewSteps,
+    this.onCancelSosConfirm,
+    this.onConfirmSos,
   });
 
   final Facility destination;
@@ -54,8 +57,15 @@ class GoToHelpCard extends StatelessWidget {
   /// button's label between "on"/"off".
   final bool voiceEnabled;
 
+  /// Whether "Send SOS instead" has opened the "Who do you need?"
+  /// confirmation — replaces the action buttons with a category picker
+  /// until [onConfirmSos] or [onCancelSosConfirm].
+  final bool sosConfirming;
+
   final VoidCallback? onStop;
   final VoidCallback? onViewSteps;
+  final VoidCallback? onCancelSosConfirm;
+  final ValueChanged<FacilityCategory>? onConfirmSos;
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +92,111 @@ class GoToHelpCard extends StatelessWidget {
     return meters <= 30
         ? 'Good GPS signal (±$rounded m)'
         : 'Weak GPS signal (±$rounded m)';
+  }
+
+  static const _sosCategories = [
+    FacilityCategory.health,
+    FacilityCategory.police,
+    FacilityCategory.fire,
+    FacilityCategory.roadSafety,
+  ];
+
+  String _sosEmoji(FacilityCategory category) => switch (category) {
+    FacilityCategory.health => '🏥',
+    FacilityCategory.police => '🛡️',
+    FacilityCategory.fire => '🔥',
+    FacilityCategory.roadSafety => '🚧',
+    FacilityCategory.other => '',
+  };
+
+  String _sosLabel(FacilityCategory category) => switch (category) {
+    FacilityCategory.health => 'Hospital',
+    FacilityCategory.police => 'Police',
+    FacilityCategory.fire => 'Fire',
+    FacilityCategory.roadSafety => 'Road Safety',
+    FacilityCategory.other => 'Other',
+  };
+
+  /// The "Who do you need?" confirmation shown by "Send SOS instead" —
+  /// matches the web platform, confirmed live: picking a category clears
+  /// the route and hands off into a ping for that category, rather than
+  /// re-routing by car.
+  Widget _buildSosConfirm() {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.danger.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: AppColors.danger, width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Who do you need?',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: AppColors.danger,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            spacing: 6,
+            children: _sosCategories.map((category) {
+              return Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(AppRadii.sm),
+                  onTap: () => onConfirmSos?.call(category),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundSurface,
+                      borderRadius: BorderRadius.circular(AppRadii.sm),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _sosEmoji(category),
+                          style: const TextStyle(fontSize: 18),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _sosLabel(category),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'This alerts responders and shares your location. The route '
+            'will be cleared.',
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: AppButton(
+              label: 'Cancel',
+              variant: AppButtonVariant.neutral,
+              onPressed: onCancelSosConfirm,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildTrackingExpanded() {
@@ -223,63 +338,67 @@ class GoToHelpCard extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 12),
-        Row(
-          spacing: 8,
-          children: [
-            Expanded(
-              child: AppButton(
-                label: '📞 Call 112',
-                variant: AppButtonVariant.danger,
-                onPressed: onCall112,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 14,
+        if (sosConfirming)
+          _buildSosConfirm()
+        else ...[
+          Row(
+            spacing: 8,
+            children: [
+              Expanded(
+                child: AppButton(
+                  label: '📞 Call 112',
+                  variant: AppButtonVariant.danger,
+                  onPressed: onCall112,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 14,
+                  ),
+                  fontSize: 13,
                 ),
-                fontSize: 13,
               ),
-            ),
-            Expanded(
-              child: AppButton(
-                label: 'Stop',
-                variant: AppButtonVariant.neutral,
-                onPressed: onStop,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 14,
+              Expanded(
+                child: AppButton(
+                  label: 'Stop',
+                  variant: AppButtonVariant.neutral,
+                  onPressed: onStop,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 14,
+                  ),
+                  fontSize: 13,
                 ),
-                fontSize: 13,
               ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: AppButton(
+              label: '☰ View turn-by-turn steps',
+              variant: AppButtonVariant.neutral,
+              onPressed: onViewSteps,
             ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: AppButton(
-            label: '☰ View turn-by-turn steps',
-            variant: AppButtonVariant.neutral,
-            onPressed: onViewSteps,
           ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: AppButton(
-            label: voiceEnabled ? '🎙️ Voice on' : '🎙️ Voice off',
-            variant: AppButtonVariant.neutral,
-            onPressed: onVoiceDirections,
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: AppButton(
+              label: voiceEnabled ? '🎙️ Voice on' : '🎙️ Voice off',
+              variant: AppButtonVariant.neutral,
+              onPressed: onVoiceDirections,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: AppButton(
-            label: '🆘 Send SOS instead',
-            variant: AppButtonVariant.danger,
-            filled: false,
-            onPressed: onSendSosInstead,
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: AppButton(
+              label: '🆘 Send SOS instead',
+              variant: AppButtonVariant.danger,
+              filled: false,
+              onPressed: onSendSosInstead,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -496,46 +615,50 @@ class GoToHelpCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        Row(
-          spacing: 8,
-          children: [
-            Expanded(
-              child: AppButton(
-                label: 'Start',
-                onPressed: onStart,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 14,
+        if (sosConfirming)
+          _buildSosConfirm()
+        else ...[
+          Row(
+            spacing: 8,
+            children: [
+              Expanded(
+                child: AppButton(
+                  label: 'Start',
+                  onPressed: onStart,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 14,
+                  ),
+                  fontSize: 13,
                 ),
-                fontSize: 13,
               ),
-            ),
-            Expanded(
-              child: AppButton(
-                label: 'Send SOS instead',
-                variant: AppButtonVariant.danger,
-                filled: false,
-                onPressed: onSendSosInstead,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 14,
+              Expanded(
+                child: AppButton(
+                  label: 'Send SOS instead',
+                  variant: AppButtonVariant.danger,
+                  filled: false,
+                  onPressed: onSendSosInstead,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 14,
+                  ),
+                  fontSize: 13,
                 ),
-                fontSize: 13,
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: AppButton(
-            label: voiceEnabled
-                ? '🎙️ Voice directions on'
-                : '🎙️ Voice directions off',
-            variant: AppButtonVariant.neutral,
-            onPressed: onVoiceDirections,
+            ],
           ),
-        ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: AppButton(
+              label: voiceEnabled
+                  ? '🎙️ Voice directions on'
+                  : '🎙️ Voice directions off',
+              variant: AppButtonVariant.neutral,
+              onPressed: onVoiceDirections,
+            ),
+          ),
+        ],
         const SizedBox(height: 8),
         SizedBox(
           width: double.infinity,

@@ -82,6 +82,13 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// the user has since panned/flown to (e.g. right after dropping a pin).
   mapbox.CameraViewportState? _initialViewport;
 
+  /// Set for exactly one frame when Go to Help's "Send SOS instead" hands
+  /// off into [GetHelpSheet] — read by that widget's `initState` to open
+  /// straight into "Finding a responder…" instead of its normal
+  /// choose-option view, then cleared so a later, unrelated "Get Help Fast"
+  /// open doesn't also auto-start a ping.
+  FacilityCategory? _pendingSosCategory;
+
   HomeMapViewModel get _viewModel =>
       ref.read(homeMapViewModelProvider.notifier);
 
@@ -227,6 +234,37 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   Future<void> _closeGoToHelp() async {
     _viewModel.closeGoToHelp();
     await _mapController.clearIsochroneAndRoute();
+  }
+
+  /// "Send SOS instead"'s "Who do you need?" confirmation, once a category
+  /// is picked — clears the route and hands off into the same Ping for Help
+  /// flow the origin popup's "Get Help Fast" card uses, anchored at
+  /// wherever Go to Help's origin currently is (live position if tracking,
+  /// the dropped pin otherwise).
+  Future<void> _confirmSosInstead(FacilityCategory category) async {
+    final state = ref.read(homeMapViewModelProvider).value;
+    final origin = state?.goToHelpOrigin;
+    final followsUser = state?.goToHelpFollowsUser ?? false;
+    if (origin == null) return;
+
+    await _mapController.clearIsochroneAndRoute();
+    _viewModel.selectOrigin(
+      point: origin,
+      title: followsUser ? 'Your Location' : '📍 Dropped Pin',
+      analyzeLabel: followsUser ? 'Analyze Access' : 'Analyze Access Here',
+      followsUser: followsUser,
+    );
+    _viewModel.openGetHelpFast();
+    setState(() => _pendingSosCategory = category);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _pendingSosCategory = null);
+    });
+
+    await _mapController.flyTo(origin);
+    if (!mounted) return;
+    final anchor = await _mapController.pixelForCoordinate(origin);
+    if (!mounted) return;
+    _popupAnchor.value = anchor;
   }
 
   /// Begins live GPS tracking for the active route — the web platform's
@@ -679,6 +717,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                         onPingActiveChanged: (active) =>
                             _pingActive.value = active,
                         onGoToHelp: _startGoToHelp,
+                        initialPingCategory: _pendingSosCategory,
                       ),
                     ),
                   ),
@@ -769,7 +808,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 onToggleExpanded: _viewModel.toggleGoToHelpCard,
                 onCall112: _call112,
                 onStart: _startTracking,
-                onSendSosInstead: () => _showComingSoon('Send SOS instead'),
+                onSendSosInstead: _viewModel.openGoToHelpSosConfirm,
                 onVoiceDirections: _viewModel.toggleGoToHelpVoice,
                 onClose: _closeGoToHelp,
                 tracking: state.goToHelpTracking,
@@ -778,6 +817,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 onStop: _viewModel.stopGoToHelpTracking,
                 onViewSteps: () =>
                     _viewGoToHelpSteps(state.goToHelpRoute!.steps),
+                sosConfirming: state.goToHelpSosConfirming,
+                onCancelSosConfirm: _viewModel.closeGoToHelpSosConfirm,
+                onConfirmSos: _confirmSosInstead,
               ),
             ),
           ],

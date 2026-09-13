@@ -53,6 +53,21 @@ extension on _HelpCategory {
   };
 }
 
+/// The reverse of `_HelpCategory.facilityCategory` above — for
+/// [GetHelpSheet.initialPingCategory], which arrives as a [FacilityCategory]
+/// since that's what Go to Help's "Who do you need?" confirmation already
+/// works in. [FacilityCategory.other] has no SOS category on the web
+/// platform, so it maps to null.
+extension on FacilityCategory {
+  _HelpCategory? get _helpCategory => switch (this) {
+    FacilityCategory.health => _HelpCategory.hospital,
+    FacilityCategory.police => _HelpCategory.police,
+    FacilityCategory.fire => _HelpCategory.fire,
+    FacilityCategory.roadSafety => _HelpCategory.roadSafety,
+    FacilityCategory.other => null,
+  };
+}
+
 class GetHelpSheet extends ConsumerStatefulWidget {
   const GetHelpSheet({
     super.key,
@@ -62,6 +77,7 @@ class GetHelpSheet extends ConsumerStatefulWidget {
     this.origin,
     this.onPingActiveChanged,
     this.onGoToHelp,
+    this.initialPingCategory,
   });
 
   final VoidCallback? onDismiss;
@@ -92,6 +108,12 @@ class GetHelpSheet extends ConsumerStatefulWidget {
   /// neither of which this card has, so that's handled by the caller.
   final ValueChanged<FacilityCategory>? onGoToHelp;
 
+  /// Opens straight into "Finding a responder…" for this category — used by
+  /// Go to Help's "Send SOS instead" handoff, which already knows which
+  /// category the user picked in its own "Who do you need?" confirmation
+  /// and shouldn't make them pick again from this sheet's choose-option view.
+  final FacilityCategory? initialPingCategory;
+
   @override
   ConsumerState<GetHelpSheet> createState() => _GetHelpSheetState();
 }
@@ -104,6 +126,8 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
   String? _address;
   bool _addressLoading = false;
   String? _addressError;
+  bool _editingAddress = false;
+  final _addressController = TextEditingController();
 
   AudioRecorder? _recorder;
   bool _isRecording = false;
@@ -114,9 +138,29 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
   static const _maxRecordingSeconds = 30;
 
   @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialPingCategory?._helpCategory;
+    if (initial == null) return;
+    _pingCategory = initial;
+    _addressLoading = widget.origin != null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onPingActiveChanged?.call(true);
+      final origin = widget.origin;
+      if (origin == null) {
+        setState(() => _addressError = 'Location unavailable');
+      } else {
+        unawaited(_loadAddress(origin));
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _recordingTimer?.cancel();
     _recorder?.dispose();
+    _addressController.dispose();
     if (_pingCategory != null) widget.onPingActiveChanged?.call(false);
     super.dispose();
   }
@@ -128,6 +172,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       _address = null;
       _addressError = null;
       _addressLoading = widget.origin != null;
+      _editingAddress = false;
     });
     widget.onPingActiveChanged?.call(true);
     final origin = widget.origin;
@@ -157,6 +202,25 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     }
   }
 
+  void _startEditingAddress() {
+    _addressController.text = _address ?? '';
+    setState(() => _editingAddress = true);
+  }
+
+  /// Applies the edited text as the new "Address sent" line — mocked like
+  /// the rest of this ping flow (no backend to actually send a correction
+  /// to), so this just updates what's displayed.
+  void _sendAddressCorrection() {
+    final corrected = _addressController.text.trim();
+    if (corrected.isEmpty) return;
+    setState(() {
+      _address = corrected;
+      _editingAddress = false;
+    });
+  }
+
+  void _cancelAddressEdit() => setState(() => _editingAddress = false);
+
   void _cancelPing() {
     _recordingTimer?.cancel();
     _recordingTimer = null;
@@ -169,6 +233,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       _voiceSent = false;
       _address = null;
       _addressError = null;
+      _editingAddress = false;
     });
   }
 
@@ -510,24 +575,57 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
             ],
           ),
         ),
-        InkWell(
-          onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Editing the address is coming soon.'),
-            ),
-          ),
-          child: const Padding(
-            padding: EdgeInsets.only(top: 2),
-            child: Text(
-              'Not right? Fix it',
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.primary,
-                fontWeight: FontWeight.w600,
+        if (_editingAddress) ...[
+          const SizedBox(height: 8),
+          TextField(
+            controller: _addressController,
+            autofocus: true,
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 10,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadii.sm),
               ),
             ),
           ),
-        ),
+          const SizedBox(height: 8),
+          Row(
+            spacing: 8,
+            children: [
+              Expanded(
+                child: AppButton(
+                  label: 'Send correction',
+                  onPressed: _sendAddressCorrection,
+                ),
+              ),
+              Expanded(
+                child: AppButton(
+                  label: 'Cancel',
+                  variant: AppButtonVariant.secondary,
+                  onPressed: _cancelAddressEdit,
+                ),
+              ),
+            ],
+          ),
+        ] else
+          InkWell(
+            onTap: _addressLoading ? null : _startEditingAddress,
+            child: const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Text(
+                'Not right? Fix it',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
         const SizedBox(height: 12),
         if (_voiceSent && !_isRecording) ...[
           const Text(

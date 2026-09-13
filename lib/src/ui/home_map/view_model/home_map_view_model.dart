@@ -79,6 +79,7 @@ class HomeMapState {
     this.goToHelpTracking = false,
     this.goToHelpAccuracyMeters,
     this.goToHelpVoiceEnabled = false,
+    this.goToHelpSosConfirming = false,
     this.errorMessage,
   });
 
@@ -154,6 +155,11 @@ class HomeMapState {
   /// platform's "Voice directions" toggle.
   final bool goToHelpVoiceEnabled;
 
+  /// Whether the "Who do you need?" confirmation is showing, after tapping
+  /// "Send SOS instead" — matches the web platform, which confirms before
+  /// clearing the route and handing off into a ping.
+  final bool goToHelpSosConfirming;
+
   /// A one-shot message for the View to surface (e.g. via SnackBar), then
   /// clear with [HomeMapViewModel.clearErrorMessage] so it isn't shown
   /// again on the next rebuild.
@@ -187,6 +193,7 @@ class HomeMapState {
     bool? goToHelpTracking,
     Object? goToHelpAccuracyMeters = _unset,
     bool? goToHelpVoiceEnabled,
+    bool? goToHelpSosConfirming,
     Object? errorMessage = _unset,
   }) {
     return HomeMapState(
@@ -239,6 +246,8 @@ class HomeMapState {
           ? this.goToHelpAccuracyMeters
           : goToHelpAccuracyMeters as double?,
       goToHelpVoiceEnabled: goToHelpVoiceEnabled ?? this.goToHelpVoiceEnabled,
+      goToHelpSosConfirming:
+          goToHelpSosConfirming ?? this.goToHelpSosConfirming,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
@@ -345,6 +354,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
+        goToHelpSosConfirming: false,
       ),
     );
   }
@@ -362,6 +372,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
+        goToHelpSosConfirming: false,
       ),
     );
   }
@@ -379,9 +390,18 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
+        goToHelpSosConfirming: false,
       ),
     );
   }
+
+  /// Opens the "Who do you need?" confirmation shown by "Send SOS instead" —
+  /// matches the web platform, which confirms before clearing the route.
+  void openGoToHelpSosConfirm() =>
+      _update((s) => s.copyWith(goToHelpSosConfirming: true));
+
+  void closeGoToHelpSosConfirm() =>
+      _update((s) => s.copyWith(goToHelpSosConfirming: false));
 
   /// Swaps the origin popup's content to "Get Help Fast," anchored at the
   /// same map point — matches the web platform, where this replaces the
@@ -653,6 +673,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
+        goToHelpSosConfirming: false,
       ),
     );
   }
