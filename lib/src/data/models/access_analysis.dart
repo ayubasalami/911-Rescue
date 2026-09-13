@@ -10,18 +10,18 @@ extension TransportModeRouting on TransportMode {
   /// Mapbox has no motorcycle profile, so motorbike reuses driving as the
   /// closest available approximation.
   String get mapboxProfile => switch (this) {
-        TransportMode.driving => 'driving-traffic',
-        TransportMode.walking => 'walking',
-        TransportMode.cycling => 'cycling',
-        TransportMode.motorbike => 'driving',
-      };
+    TransportMode.driving => 'driving-traffic',
+    TransportMode.walking => 'walking',
+    TransportMode.cycling => 'cycling',
+    TransportMode.motorbike => 'driving',
+  };
 
   String get label => switch (this) {
-        TransportMode.driving => 'driving',
-        TransportMode.walking => 'walking',
-        TransportMode.cycling => 'cycling',
-        TransportMode.motorbike => 'motorbike',
-      };
+    TransportMode.driving => 'driving',
+    TransportMode.walking => 'walking',
+    TransportMode.cycling => 'cycling',
+    TransportMode.motorbike => 'motorbike',
+  };
 }
 
 class ReachableFacility {
@@ -74,7 +74,10 @@ class IsochroneRing {
 }
 
 class DirectionsStep {
-  const DirectionsStep({required this.instruction, required this.distanceMeters});
+  const DirectionsStep({
+    required this.instruction,
+    required this.distanceMeters,
+  });
 
   final String instruction;
   final double distanceMeters;
@@ -92,6 +95,30 @@ class DirectionsRoute {
   final List<DirectionsStep> steps;
   final double distanceMeters;
   final double durationSeconds;
+}
+
+extension DirectionsRouteFormatting on DirectionsRoute {
+  String get formattedDistance =>
+      '${(distanceMeters / 1000).toStringAsFixed(1)} km';
+
+  String get formattedDuration {
+    final totalMinutes = (durationSeconds / 60).round();
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    return hours > 0 ? '$hours hr $minutes min' : '$minutes min';
+  }
+
+  /// A clock-formatted ETA computed from "now" — the web platform shows
+  /// this alongside the route summary (e.g. "Arrive 05:40 AM").
+  String get formattedArrival {
+    final arrival = DateTime.now().add(
+      Duration(seconds: durationSeconds.round()),
+    );
+    final hour12 = arrival.hour % 12 == 0 ? 12 : arrival.hour % 12;
+    final minute = arrival.minute.toString().padLeft(2, '0');
+    final period = arrival.hour >= 12 ? 'PM' : 'AM';
+    return '$hour12:$minute $period';
+  }
 }
 
 class AccessAnalysisResult {

@@ -17,14 +17,18 @@ import '../controllers/map_annotation_controller.dart';
 import '../view_model/home_map_view_model.dart';
 import '../widgets/access_analysis_sheet.dart';
 import '../widgets/access_origin_popup.dart';
+import '../widgets/calculating_route_overlay.dart';
 import '../widgets/change_commute_mode_card.dart';
 import '../widgets/facility_filter_row.dart';
 import '../widgets/facility_popup_card.dart';
 import '../widgets/facility_summary_sheet.dart';
+import '../widgets/go_to_help_card.dart';
+import '../widgets/go_to_help_mode_bar.dart';
 import '../widgets/home_drawer.dart';
 import '../widgets/home_map_header.dart';
 import '../widgets/map_control_button.dart';
 import '../widgets/map_legend.dart';
+import '../widgets/route_active_chip.dart';
 import '../widgets/sos_action_menu.dart';
 import '../widgets/turn_by_turn_sheet.dart';
 import '../widgets/view_results_button.dart';
@@ -191,6 +195,40 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _popupAnchor.value = null;
   }
 
+  /// Routes to the nearest [category] facility from the current origin,
+  /// then draws the route and zooms out to show it in full — matches the
+  /// web platform's Go to Help, confirmed live to auto-pick the closest
+  /// facility rather than asking the user to choose one.
+  Future<void> _startGoToHelp(FacilityCategory category) async {
+    await _viewModel.startGoToHelp(category);
+    final state = ref.read(homeMapViewModelProvider).value;
+    final origin = state?.goToHelpOrigin;
+    final route = state?.goToHelpRoute;
+    if (!mounted || origin == null || route == null) return;
+    // Mapbox snaps the route's own first point to the nearest road, which
+    // can sit a little away from the pin itself and read as the line
+    // "overshooting" it — prepending the exact origin keeps the drawn line
+    // anchored to the pin.
+    await _mapController.renderRoute([origin, ...route.points]);
+    if (!mounted) return;
+    await _mapController.flyToBounds(route.points);
+  }
+
+  Future<void> _changeGoToHelpMode(TransportMode mode) async {
+    _viewModel.setSelectedMode(mode);
+    await _viewModel.refreshGoToHelpRoute();
+    final state = ref.read(homeMapViewModelProvider).value;
+    final origin = state?.goToHelpOrigin;
+    final route = state?.goToHelpRoute;
+    if (!mounted || origin == null || route == null) return;
+    await _mapController.renderRoute([origin, ...route.points]);
+  }
+
+  Future<void> _closeGoToHelp() async {
+    _viewModel.closeGoToHelp();
+    await _mapController.clearIsochroneAndRoute();
+  }
+
   Future<void> _call112() async {
     _viewModel.closeSosMenu();
     final uri = Uri(scheme: 'tel', path: '112');
@@ -344,10 +382,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       ? (state?.facilities ?? const [])
       : const [];
 
-  /// The point to show a dropped-pin map marker for — null for "Your
-  /// Location" (which already has its own live location puck) or when
-  /// there's no origin selection at all.
+  /// The point to show a static map marker for — null for "Your Location"
+  /// (which already has its own live location puck) or when there's no
+  /// origin selection at all, UNLESS a Go to Help route is active: the
+  /// route line is drawn once, from a frozen coordinate, but the native GPS
+  /// puck keeps live-updating from CoreLocation independently of it — so
+  /// without a static marker pinned at the same frozen coordinate, the puck
+  /// visibly drifts away from where the line actually starts. A dropped pin
+  /// never has this problem since it already is a static marker.
   GeoPoint? _droppedPinPoint(HomeMapState? state) {
+    final goToHelpOrigin = state?.goToHelpOrigin;
+    if (goToHelpOrigin != null) return goToHelpOrigin;
     final selection = state?.originSelection;
     if (selection == null || selection.followsUser) return null;
     return selection.point;
@@ -602,6 +647,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                         origin: state.originSelection!.point,
                         onPingActiveChanged: (active) =>
                             _pingActive.value = active,
+                        onGoToHelp: _startGoToHelp,
                       ),
                     ),
                   ),
@@ -653,6 +699,53 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       ),
                     ),
             ),
+          if (state?.goToHelpRoute != null &&
+              state?.goToHelpDestination != null) ...[
+            Positioned(
+              top: 108 + topInset,
+              left: 16,
+              right: 16,
+              child: Center(
+                child: GoToHelpModeBar(
+                  selectedMode: state!.selectedTransportMode,
+                  onModeSelected: _changeGoToHelpMode,
+                ),
+              ),
+            ),
+            Positioned(
+              // Below the mode bar rather than beside it — sharing a row
+              // caused the mode bar's own width to be squeezed enough to
+              // overflow (4 chips need ~310px, the shared-row space left
+              // only ~280px). Also kept clear of the right-side map
+              // control button column (44px wide at right:16, so right:72
+              // leaves an 8px gap past its left edge).
+              top: 168 + topInset,
+              right: 72,
+              child: RouteActiveChip(
+                destinationName: state.goToHelpDestination!.name,
+                route: state.goToHelpRoute!,
+                onClose: _closeGoToHelp,
+              ),
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 16 + bottomInset,
+              child: GoToHelpCard(
+                destination: state.goToHelpDestination!,
+                route: state.goToHelpRoute!,
+                expanded: state.goToHelpCardExpanded,
+                onToggleExpanded: _viewModel.toggleGoToHelpCard,
+                onCall112: _call112,
+                onStart: () => _showComingSoon('Start navigation'),
+                onSendSosInstead: () => _showComingSoon('Send SOS instead'),
+                onVoiceDirections: () => _showComingSoon('Voice directions'),
+                onClose: _closeGoToHelp,
+              ),
+            ),
+          ],
+          if (state?.goToHelpLoading ?? false)
+            const Positioned.fill(child: CalculatingRouteOverlay()),
           if (state?.showAnalysisSheet == true && state?.activeAnalysis != null)
             Positioned.fill(
               child: AccessAnalysisSheet(

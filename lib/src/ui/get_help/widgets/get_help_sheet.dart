@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
 import '../../../data/services/geocoding_service.dart';
 import '../../core/widgets/app_button.dart';
@@ -43,6 +44,13 @@ extension on _HelpCategory {
     _HelpCategory.fire => 'Fire & Emergency',
     _HelpCategory.roadSafety => 'Road Safety',
   };
+
+  FacilityCategory get facilityCategory => switch (this) {
+    _HelpCategory.hospital => FacilityCategory.health,
+    _HelpCategory.police => FacilityCategory.police,
+    _HelpCategory.fire => FacilityCategory.fire,
+    _HelpCategory.roadSafety => FacilityCategory.roadSafety,
+  };
 }
 
 class GetHelpSheet extends ConsumerStatefulWidget {
@@ -53,6 +61,7 @@ class GetHelpSheet extends ConsumerStatefulWidget {
     this.isPinnedLocation = false,
     this.origin,
     this.onPingActiveChanged,
+    this.onGoToHelp,
   });
 
   final VoidCallback? onDismiss;
@@ -77,6 +86,11 @@ class GetHelpSheet extends ConsumerStatefulWidget {
   /// show a pulse animation at the origin point independent of wherever
   /// this card itself is displayed.
   final ValueChanged<bool>? onPingActiveChanged;
+
+  /// Tapping a category under "Go to Help" — routing to the nearest
+  /// facility needs the full facility list and the map's route renderer,
+  /// neither of which this card has, so that's handled by the caller.
+  final ValueChanged<FacilityCategory>? onGoToHelp;
 
   @override
   ConsumerState<GetHelpSheet> createState() => _GetHelpSheetState();
@@ -330,12 +344,8 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
                         ? null
                         : _mode == _HelpMode.ping
                         ? () => _startPing(category)
-                        : () => ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                '${category.label} requested (demo)',
-                              ),
-                            ),
+                        : () => widget.onGoToHelp?.call(
+                            category.facilityCategory,
                           ),
                     child: Container(
                       decoration: BoxDecoration(

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
@@ -66,6 +67,12 @@ class HomeMapState {
     this.originSelection,
     this.selectedFacility,
     this.showGetHelpFast = false,
+    this.goToHelpDestination,
+    this.goToHelpRoute,
+    this.goToHelpCardExpanded = true,
+    this.goToHelpLoading = false,
+    this.goToHelpOrigin,
+    this.goToHelpFollowsUser = false,
     this.errorMessage,
   });
 
@@ -105,6 +112,28 @@ class HomeMapState {
   /// same map point, rather than opening a separate sheet.
   final bool showGetHelpFast;
 
+  /// The nearest facility of the chosen category, and the active route to
+  /// it — non-null together for the whole "Go to Help" lifetime, matching
+  /// the web platform's turn-by-turn card.
+  final Facility? goToHelpDestination;
+  final DirectionsRoute? goToHelpRoute;
+
+  /// Whether the Go to Help card shows its full turn-by-turn body or just
+  /// the collapsed time/destination summary.
+  final bool goToHelpCardExpanded;
+
+  /// Whether a route is being (re)fetched — either the first time a category
+  /// is tapped, or after a mode-bar change — matches the web platform's
+  /// "Calculating Route… / Fetching live road data" overlay.
+  final bool goToHelpLoading;
+
+  /// The origin Go to Help started from, and whether it should track a
+  /// fresh GPS fix rather than stay anchored to that point — captured from
+  /// [OriginSelection] when the route starts, since [originSelection]
+  /// itself gets cleared once Go to Help's card takes over the popup.
+  final GeoPoint? goToHelpOrigin;
+  final bool goToHelpFollowsUser;
+
   /// A one-shot message for the View to surface (e.g. via SnackBar), then
   /// clear with [HomeMapViewModel.clearErrorMessage] so it isn't shown
   /// again on the next rebuild.
@@ -129,6 +158,12 @@ class HomeMapState {
     Object? originSelection = _unset,
     Object? selectedFacility = _unset,
     bool? showGetHelpFast,
+    Object? goToHelpDestination = _unset,
+    Object? goToHelpRoute = _unset,
+    bool? goToHelpCardExpanded,
+    bool? goToHelpLoading,
+    Object? goToHelpOrigin = _unset,
+    bool? goToHelpFollowsUser,
     Object? errorMessage = _unset,
   }) {
     return HomeMapState(
@@ -164,6 +199,18 @@ class HomeMapState {
           ? this.selectedFacility
           : selectedFacility as Facility?,
       showGetHelpFast: showGetHelpFast ?? this.showGetHelpFast,
+      goToHelpDestination: identical(goToHelpDestination, _unset)
+          ? this.goToHelpDestination
+          : goToHelpDestination as Facility?,
+      goToHelpRoute: identical(goToHelpRoute, _unset)
+          ? this.goToHelpRoute
+          : goToHelpRoute as DirectionsRoute?,
+      goToHelpCardExpanded: goToHelpCardExpanded ?? this.goToHelpCardExpanded,
+      goToHelpLoading: goToHelpLoading ?? this.goToHelpLoading,
+      goToHelpOrigin: identical(goToHelpOrigin, _unset)
+          ? this.goToHelpOrigin
+          : goToHelpOrigin as GeoPoint?,
+      goToHelpFollowsUser: goToHelpFollowsUser ?? this.goToHelpFollowsUser,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
@@ -244,6 +291,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       ),
       selectedFacility: null,
       showGetHelpFast: false,
+      goToHelpDestination: null,
+      goToHelpRoute: null,
+      goToHelpOrigin: null,
+      goToHelpFollowsUser: false,
     ),
   );
 
@@ -252,6 +303,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       selectedFacility: facility,
       originSelection: null,
       showGetHelpFast: false,
+      goToHelpDestination: null,
+      goToHelpRoute: null,
+      goToHelpOrigin: null,
+      goToHelpFollowsUser: false,
     ),
   );
 
@@ -260,6 +315,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       originSelection: null,
       selectedFacility: null,
       showGetHelpFast: false,
+      goToHelpDestination: null,
+      goToHelpRoute: null,
+      goToHelpOrigin: null,
+      goToHelpFollowsUser: false,
     ),
   );
 
@@ -412,6 +471,125 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       return null;
     }
   }
+
+  /// Finds the nearest [category] facility to the current origin selection
+  /// and routes to it — matches the web platform's "Go to Help," which
+  /// auto-picks the closest facility of the chosen type rather than asking
+  /// the user to pick one.
+  ///
+  /// For "Your Location," this re-fetches a fresh GPS position instead of
+  /// reusing the point captured when the origin was selected: the native
+  /// map puck is driven live by CoreLocation and keeps refining/drifting
+  /// after that snapshot was taken, so a stale point can sit meters away
+  /// from where the puck is actually drawn — reading as the route line
+  /// overshooting the icon.
+  Future<void> startGoToHelp(FacilityCategory category) async {
+    final originSelection = state.value?.originSelection;
+    if (originSelection == null) return;
+    var origin = originSelection.point;
+    if (originSelection.followsUser) {
+      final result = await ref
+          .read(locationRepositoryProvider)
+          .currentPosition();
+      origin = result.position ?? origin;
+    }
+
+    final facilities = state.value?.facilities ?? const <Facility>[];
+    Facility? nearest;
+    var nearestDistance = double.infinity;
+    for (final facility in facilities) {
+      if (facility.category != category) continue;
+      final distance = Geolocator.distanceBetween(
+        origin.latitude,
+        origin.longitude,
+        facility.latitude,
+        facility.longitude,
+      );
+      if (distance < nearestDistance) {
+        nearest = facility;
+        nearestDistance = distance;
+      }
+    }
+    if (nearest == null) {
+      _setError('No nearby ${category.displayLabel} found');
+      return;
+    }
+
+    _update((s) => s.copyWith(goToHelpLoading: true));
+    final route = await fetchRoute(
+      origin,
+      GeoPoint(latitude: nearest.latitude, longitude: nearest.longitude),
+    );
+    if (route == null) {
+      _update((s) => s.copyWith(goToHelpLoading: false));
+      return;
+    }
+
+    _update(
+      (s) => s.copyWith(
+        goToHelpDestination: nearest,
+        goToHelpRoute: route,
+        goToHelpCardExpanded: true,
+        goToHelpLoading: false,
+        goToHelpOrigin: origin,
+        goToHelpFollowsUser: originSelection.followsUser,
+        showGetHelpFast: false,
+        originSelection: null,
+        selectedFacility: null,
+      ),
+    );
+  }
+
+  /// Re-fetches the active Go to Help route with the current
+  /// [HomeMapState.selectedTransportMode] — used when the mode bar changes.
+  /// Also re-resolves the origin when it's tracking live location (see
+  /// [startGoToHelp]), so the drawn line keeps matching the map's puck
+  /// instead of anchoring to wherever the user was when the route started.
+  Future<void> refreshGoToHelpRoute() async {
+    final current = state.value;
+    final destination = current?.goToHelpDestination;
+    final anchorOrigin = current?.goToHelpOrigin;
+    if (current == null || destination == null || anchorOrigin == null) return;
+
+    var origin = anchorOrigin;
+    if (current.goToHelpFollowsUser) {
+      final result = await ref
+          .read(locationRepositoryProvider)
+          .currentPosition();
+      origin = result.position ?? origin;
+    }
+
+    _update((s) => s.copyWith(goToHelpLoading: true));
+    final route = await fetchRoute(
+      origin,
+      GeoPoint(
+        latitude: destination.latitude,
+        longitude: destination.longitude,
+      ),
+    );
+    _update(
+      (s) => s.copyWith(
+        goToHelpRoute: route ?? s.goToHelpRoute,
+        goToHelpOrigin: origin,
+        goToHelpLoading: false,
+      ),
+    );
+  }
+
+  void toggleGoToHelpCard() =>
+      _update((s) => s.copyWith(goToHelpCardExpanded: !s.goToHelpCardExpanded));
+
+  /// Cancels the active Go to Help route entirely — matches the web
+  /// platform's "Route active" chip close button.
+  void closeGoToHelp() => _update(
+    (s) => s.copyWith(
+      goToHelpDestination: null,
+      goToHelpRoute: null,
+      goToHelpLoading: false,
+      goToHelpOrigin: null,
+      goToHelpFollowsUser: false,
+    ),
+  );
 }
 
 final homeMapViewModelProvider =

@@ -16,6 +16,8 @@ class AppButton extends StatelessWidget {
     this.variant = AppButtonVariant.primary,
     this.filled = true,
     this.icon,
+    this.padding,
+    this.fontSize,
   });
 
   final String label;
@@ -30,18 +32,36 @@ class AppButton extends StatelessWidget {
 
   final IconData? icon;
 
+  /// Overrides the default padding — for tight spots (e.g. two buttons
+  /// sharing a row with a long label) where the default 20px horizontal
+  /// padding would force the label onto two lines.
+  final EdgeInsetsGeometry? padding;
+
+  /// Overrides the default 15px label size — same tight-spot use case as
+  /// [padding].
+  final double? fontSize;
+
   static const _padding = EdgeInsets.symmetric(horizontal: 20, vertical: 14);
-  static const _textStyle = TextStyle(fontWeight: FontWeight.w600, fontSize: 15);
-  static final _shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadii.sm));
+  static const _textStyle = TextStyle(
+    fontWeight: FontWeight.w600,
+    fontSize: 15,
+  );
+  static final _shape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(AppRadii.sm),
+  );
+
+  EdgeInsetsGeometry get _resolvedPadding => padding ?? _padding;
+  TextStyle get _resolvedTextStyle =>
+      fontSize == null ? _textStyle : _textStyle.copyWith(fontSize: fontSize);
 
   Color get _color => switch (variant) {
-        AppButtonVariant.primary => AppColors.primary,
-        AppButtonVariant.success => AppColors.success,
-        AppButtonVariant.danger => AppColors.danger,
-        AppButtonVariant.warning => AppColors.warning,
-        AppButtonVariant.secondary => AppColors.primary,
-        AppButtonVariant.neutral => AppColors.textSecondary,
-      };
+    AppButtonVariant.primary => AppColors.primary,
+    AppButtonVariant.success => AppColors.success,
+    AppButtonVariant.danger => AppColors.danger,
+    AppButtonVariant.warning => AppColors.warning,
+    AppButtonVariant.secondary => AppColors.primary,
+    AppButtonVariant.neutral => AppColors.textSecondary,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -53,8 +73,8 @@ class AppButton extends StatelessWidget {
           foregroundColor: AppColors.primary,
           side: const BorderSide(color: AppColors.border),
           shape: _shape,
-          padding: _padding,
-          textStyle: _textStyle,
+          padding: _resolvedPadding,
+          textStyle: _resolvedTextStyle,
         ),
       );
     }
@@ -70,8 +90,8 @@ class AppButton extends StatelessWidget {
           foregroundColor: AppColors.textSecondary,
           side: const BorderSide(color: AppColors.border),
           shape: _shape,
-          padding: _padding,
-          textStyle: _textStyle,
+          padding: _resolvedPadding,
+          textStyle: _resolvedTextStyle,
         ),
       );
     }
@@ -85,8 +105,8 @@ class AppButton extends StatelessWidget {
           foregroundColor: Colors.white,
           elevation: 0,
           shape: _shape,
-          padding: _padding,
-          textStyle: _textStyle,
+          padding: _resolvedPadding,
+          textStyle: _resolvedTextStyle,
         ),
       );
     }
@@ -97,8 +117,8 @@ class AppButton extends StatelessWidget {
         foregroundColor: color,
         side: BorderSide(color: color),
         shape: _shape,
-        padding: _padding,
-        textStyle: _textStyle,
+        padding: _resolvedPadding,
+        textStyle: _resolvedTextStyle,
       ),
     );
   }
@@ -111,11 +131,29 @@ class AppButton extends StatelessWidget {
   Widget _build({required bool outlined, required ButtonStyle style}) {
     if (icon == null) {
       return outlined
-          ? OutlinedButton(onPressed: onPressed, style: style, child: Text(label))
-          : ElevatedButton(onPressed: onPressed, style: style, child: Text(label));
+          ? OutlinedButton(
+              onPressed: onPressed,
+              style: style,
+              child: Text(label),
+            )
+          : ElevatedButton(
+              onPressed: onPressed,
+              style: style,
+              child: Text(label),
+            );
     }
     return outlined
-        ? OutlinedButton.icon(onPressed: onPressed, style: style, icon: Icon(icon, size: 18), label: Text(label))
-        : ElevatedButton.icon(onPressed: onPressed, style: style, icon: Icon(icon, size: 18), label: Text(label));
+        ? OutlinedButton.icon(
+            onPressed: onPressed,
+            style: style,
+            icon: Icon(icon, size: 18),
+            label: Text(label),
+          )
+        : ElevatedButton.icon(
+            onPressed: onPressed,
+            style: style,
+            icon: Icon(icon, size: 18),
+            label: Text(label),
+          );
   }
 }

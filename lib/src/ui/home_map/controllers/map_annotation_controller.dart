@@ -46,8 +46,9 @@ Future<Uint8List> _renderCategoryMarker(FacilityCategory category) async {
   return byteData!.buffer.asUint8List();
 }
 
-/// Rasterizes a map-pin glyph for the current-location puck, replacing
-/// Mapbox's default plain dot with an actual location pin icon.
+/// Rasterizes a map-pin glyph, used both for a dropped pin (bottom-anchored
+/// via [PointAnnotationOptions.iconAnchor]) and for the native GPS location
+/// puck.
 Future<Uint8List> _renderLocationPinImage() async {
   const size = 96.0;
   final recorder = ui.PictureRecorder();
@@ -145,6 +146,28 @@ class MapAnnotationController {
           mapbox.MapAnimationOptions(duration: 800),
         ) ??
         Future.value();
+  }
+
+  /// Zooms/pans to fit every point in [points] on screen at once — used for
+  /// the Go to Help route overview, matching the web platform's zoom-out
+  /// when a route is active.
+  Future<void> flyToBounds(List<GeoPoint> points, {double padding = 60}) async {
+    final map = _map;
+    if (map == null || points.isEmpty) return;
+    final coordinates = points.map(mapboxPointFrom).toList();
+    final camera = await map.cameraForCoordinatesPadding(
+      coordinates,
+      mapbox.CameraOptions(),
+      mapbox.MbxEdgeInsets(
+        top: padding,
+        left: padding,
+        bottom: padding,
+        right: padding,
+      ),
+      null,
+      null,
+    );
+    await map.flyTo(camera, mapbox.MapAnimationOptions(duration: 800));
   }
 
   /// The on-screen pixel for [point], or null if the map isn't ready yet.
@@ -309,8 +332,14 @@ class MapAnnotationController {
               mapbox.Position(point.longitude, point.latitude),
           ],
         ),
-        lineColor: AppColors.success.toARGB32(),
-        lineWidth: 4,
+        // Deliberately not AppColors.success: the Live Traffic layer paints
+        // low-congestion roads a near-identical green (#2ECC71 vs this
+        // green's 0xFF22C55E), and a route running along a low-congestion
+        // road becomes visually indistinguishable from the traffic-colored
+        // road itself — which reads as the route "continuing" along the
+        // full street in both directions instead of stopping at the origin.
+        lineColor: AppColors.primary.toARGB32(),
+        lineWidth: 5,
       ),
     );
   }
