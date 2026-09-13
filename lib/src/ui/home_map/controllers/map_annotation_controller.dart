@@ -141,8 +141,12 @@ class MapAnnotationController {
   }
 
   Future<void> flyTo(GeoPoint point) {
+    // 13, not 12: matches HomeMapScreen's facility-marker zoom threshold,
+    // so deliberately centering on a point (dropped pin, "My Location",
+    // Go to Help tracking, …) actually reveals nearby facilities instead
+    // of landing just below where they'd show.
     return _map?.flyTo(
-          mapbox.CameraOptions(center: mapboxPointFrom(point), zoom: 12),
+          mapbox.CameraOptions(center: mapboxPointFrom(point), zoom: 13),
           mapbox.MapAnimationOptions(duration: 800),
         ) ??
         Future.value();

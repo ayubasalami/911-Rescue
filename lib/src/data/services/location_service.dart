@@ -1,7 +1,7 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+
+import '../../core/env.dart';
 
 final locationServiceProvider = Provider<LocationService>(
   (ref) => LocationService(),
@@ -10,8 +10,7 @@ final locationServiceProvider = Provider<LocationService>(
 class LocationService {
   // geolocator's platform channel isn't mocked under flutter_test and hangs
   // indefinitely, so fall back to a canned Lagos position there.
-  bool get _isTestEnvironment =>
-      Platform.environment.containsKey('FLUTTER_TEST');
+  bool get _isTestEnvironment => isTestEnvironment;
 
   Future<bool> isLocationServiceEnabled() => _isTestEnvironment
       ? Future.value(true)

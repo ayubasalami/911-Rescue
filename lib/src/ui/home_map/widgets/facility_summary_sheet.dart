@@ -65,11 +65,13 @@ class FacilitySummarySheet extends StatelessWidget {
                     letterSpacing: 0.5,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  facility.address,
-                  style: const TextStyle(color: AppColors.textSecondary),
-                ),
+                if (facility.address case final address?) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    address,
+                    style: const TextStyle(color: AppColors.textSecondary),
+                  ),
+                ],
               ],
             ),
           ),

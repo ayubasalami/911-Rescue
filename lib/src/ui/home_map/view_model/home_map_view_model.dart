@@ -3,6 +3,7 @@ import 'dart:async' show StreamSubscription, unawaited;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../../core/result.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
@@ -279,19 +280,32 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         .read(locationRepositoryProvider)
         .currentPosition();
     final center = locationResult.position ?? defaultMapCenter;
-    final facilities = await ref
+
+    final facilitiesResult = await ref
         .read(facilityRepositoryProvider)
-        .nearbyFacilities(
-          latitude: center.latitude,
-          longitude: center.longitude,
-        );
+        .allFacilities();
+    final facilities = switch (facilitiesResult) {
+      Ok(:final value) => value,
+      Err() => const <Facility>[],
+    };
+
+    final locationMessage =
+        locationResult.status == LocationAccessStatus.granted
+        ? null
+        : locationStatusMessage(locationResult.status);
+    final facilitiesMessage = switch (facilitiesResult) {
+      Ok() => null,
+      Err(:final failure) => failure.userMessage,
+    };
+
     return HomeMapState(
       facilities: facilities,
       center: center,
       locationStatus: locationResult.status,
-      errorMessage: locationResult.status == LocationAccessStatus.granted
-          ? null
-          : locationStatusMessage(locationResult.status),
+      // Location's own message takes priority when both fail — it's the
+      // more fundamentally blocking of the two (no facilities is a broken
+      // list; no location is a broken map).
+      errorMessage: locationMessage ?? facilitiesMessage,
     );
   }
 
@@ -449,19 +463,20 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     clearPopups();
 
     final AccessAnalysisResult result;
-    try {
-      result = await ref
-          .read(accessAnalysisRepositoryProvider)
-          .analyze(
-            origin: origin,
-            mode: state.value?.selectedTransportMode ?? TransportMode.driving,
-            thresholdMinutes:
-                state.value?.analysisThresholdMinutes ??
-                kAccessAnalysisThresholdMinutes,
-          );
-    } catch (error) {
-      _setError('Could not run accessibility analysis: $error');
-      return;
+    switch (await ref
+        .read(accessAnalysisRepositoryProvider)
+        .analyze(
+          origin: origin,
+          mode: state.value?.selectedTransportMode ?? TransportMode.driving,
+          thresholdMinutes:
+              state.value?.analysisThresholdMinutes ??
+              kAccessAnalysisThresholdMinutes,
+        )) {
+      case Ok(:final value):
+        result = value;
+      case Err(:final failure):
+        _setError(failure.userMessage);
+        return;
     }
 
     _update(

@@ -135,4 +135,14 @@ class JsonReader {
         .map((e) => item(JsonReader(e, path: '${_pathTo(key)}[]')))
         .toList(growable: false);
   }
+
+  /// The raw decoded array at [key], unmapped — for shapes [list] can't
+  /// handle because the elements aren't JSON objects, like a GeoJSON
+  /// coordinate array (`[lng, lat]`, or nested arrays of those for a
+  /// polygon ring).
+  List<dynamic> rawList(String key) {
+    final value = _json[key];
+    if (value is! List) return _fail(key, 'array');
+    return value;
+  }
 }

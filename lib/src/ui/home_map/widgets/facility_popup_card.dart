@@ -49,7 +49,12 @@ class FacilityPopupCard extends StatelessWidget {
                   children: [
                     ClipRRect(
                       borderRadius: BorderRadius.circular(AppRadii.md),
-                      child: Image.asset(crestAsset, width: double.infinity, height: 130, fit: BoxFit.cover),
+                      child: Image.asset(
+                        crestAsset,
+                        width: double.infinity,
+                        height: 130,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                     Positioned(
                       top: 6,
@@ -59,8 +64,15 @@ class FacilityPopupCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(AppRadii.full),
                         child: Container(
                           padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
-                          child: const Icon(Icons.close, size: 16, color: Colors.white),
+                          decoration: const BoxDecoration(
+                            color: Colors.black45,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            size: 16,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
@@ -76,7 +88,10 @@ class FacilityPopupCard extends StatelessWidget {
                     children: [
                       Text(
                         facility.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
                       ),
                       Text(
                         facility.category.displayLabel.toUpperCase(),
@@ -96,26 +111,46 @@ class FacilityPopupCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppRadii.full),
                     child: const Padding(
                       padding: EdgeInsets.all(4),
-                      child: Icon(Icons.close, size: 18, color: AppColors.textSecondary),
+                      child: Icon(
+                        Icons.close,
+                        size: 18,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                   ),
               ],
             ),
-            const SizedBox(height: 6),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.location_on, size: 14, color: AppColors.textSecondary),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(facility.address, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                ),
-              ],
-            ),
+            if (facility.address case final address?) ...[
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.location_on,
+                    size: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      address,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: AppButton(label: 'View Info', onPressed: onViewInfo, filled: false),
+              child: AppButton(
+                label: 'View Info',
+                onPressed: onViewInfo,
+                filled: false,
+              ),
             ),
             const SizedBox(height: 8),
             SizedBox(
@@ -129,7 +164,10 @@ class FacilityPopupCard extends StatelessWidget {
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
-              child: AppButton(label: 'Get Directions', onPressed: onGetDirections),
+              child: AppButton(
+                label: 'Get Directions',
+                onPressed: onGetDirections,
+              ),
             ),
             const SizedBox(height: 8),
             SizedBox(

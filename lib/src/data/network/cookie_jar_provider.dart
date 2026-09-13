@@ -15,7 +15,11 @@ import 'package:path_provider/path_provider.dart';
 /// `overrideWithValue`, the same way `appConfigProvider` is. Every other
 /// network provider built on top of this (see api_client.dart) stays a
 /// normal synchronous `Provider` as a result.
-final cookieJarProvider = Provider<PersistCookieJar>((ref) {
+///
+/// Typed as the base [CookieJar] rather than [PersistCookieJar] so a test
+/// can override it with a plain in-memory `CookieJar()` — no disk or
+/// platform-channel access needed there.
+final cookieJarProvider = Provider<CookieJar>((ref) {
   throw UnimplementedError(
     'cookieJarProvider must be overridden in bootstrap()',
   );

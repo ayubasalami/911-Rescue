@@ -32,6 +32,7 @@ import '../widgets/route_active_chip.dart';
 import '../widgets/sos_action_menu.dart';
 import '../widgets/turn_by_turn_sheet.dart';
 import '../widgets/view_results_button.dart';
+import '../widgets/zoom_in_hint.dart';
 
 // mapbox_maps_flutter renders a native platform view that flutter_test can't
 // host, so widget tests fall back to a static placeholder here.
@@ -65,6 +66,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// around just the popup keeps each update scoped to that small subtree.
   final ValueNotifier<Offset?> _popupAnchor = ValueNotifier(null);
   final ValueNotifier<bool> _pingActive = ValueNotifier(false);
+
+  /// Drives [ZoomInHint] — kept in a `ValueNotifier` for the same reason as
+  /// [_popupAnchor]: it changes on nearly every frame during a pinch/pan
+  /// gesture, and routing that through `setState` would rebuild the whole
+  /// screen instead of just the hint.
+  final ValueNotifier<double> _cameraZoom = ValueNotifier(12);
+
+  /// Tracks which side of [_facilityVisibleZoom] the camera was on last, so
+  /// [_onCameraChanged] only re-syncs facility markers when that actually
+  /// flips rather than on every frame.
+  bool _facilitiesWereVisible = false;
 
   /// Guards against overlapping `pixelForCoordinate` platform-channel calls:
   /// `onCameraChangeListener` fires on nearly every rendered frame during a
@@ -100,6 +112,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   void dispose() {
     _popupAnchor.dispose();
     _pingActive.dispose();
+    _cameraZoom.dispose();
     _searchFocusNode.dispose();
     super.dispose();
   }
@@ -142,8 +155,25 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// must stay a stable method reference (not an inline lambda) so it
   /// doesn't look like a new callback to the plugin on every rebuild, which
   /// would re-subscribe the native listener on every single frame.
-  void _onCameraChanged(mapbox.CameraChangedEventData _) =>
-      unawaited(_syncPopupAnchor());
+  void _onCameraChanged(mapbox.CameraChangedEventData event) {
+    unawaited(_syncPopupAnchor());
+    _cameraZoom.value = event.cameraState.zoom;
+
+    // Only re-sync facility markers when zoom crosses the visibility
+    // threshold, not on every frame — syncFacilityPins deletes and
+    // recreates every marker, which would be wasteful mid-gesture.
+    final nowVisible = event.cameraState.zoom >= _facilityVisibleZoom;
+    if (nowVisible != _facilitiesWereVisible) {
+      _facilitiesWereVisible = nowVisible;
+      final state = ref.read(homeMapViewModelProvider).value;
+      unawaited(
+        _mapController.syncFacilityPins(
+          _facilitiesToRender(state),
+          state?.selectedFilter,
+        ),
+      );
+    }
+  }
 
   /// Re-projects the active popup's anchor point to screen pixels on every
   /// camera change (pan/zoom/rotate) — without this, the popup stays fixed
@@ -445,6 +475,22 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       ? (state?.facilities ?? const [])
       : const [];
 
+  /// Below this zoom, [_facilitiesToRender] returns nothing and
+  /// [ZoomInHint] shows instead — matches the web platform's own "Zoom in
+  /// to see facilities" behavior (confirmed live), which exists because
+  /// rendering all ~2,900 Lagos-wide facilities at once is an unreadable
+  /// wall of overlapping pins rather than a usable map.
+  static const _facilityVisibleZoom = 13.0;
+
+  /// [_visibleFacilities], additionally gated by zoom — a *separate* method
+  /// from it (rather than folding the check in there) since the zoom-in
+  /// hint needs to know "would there be facilities to show here if zoomed
+  /// in enough", which `_visibleFacilities` alone still answers.
+  List<Facility> _facilitiesToRender(HomeMapState? state) =>
+      _cameraZoom.value >= _facilityVisibleZoom
+      ? _visibleFacilities(state)
+      : const [];
+
   /// The point to show a static map marker for — null for "Your Location"
   /// (which already has its own live location puck) or when there's no
   /// origin selection at all, UNLESS a Go to Help route is active: the
@@ -468,7 +514,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     );
     final state = ref.read(homeMapViewModelProvider).value;
     await _mapController.syncFacilityPins(
-      _visibleFacilities(state),
+      _facilitiesToRender(state),
       state?.selectedFilter,
     );
   }
@@ -480,7 +526,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     if (state != null) {
       unawaited(
         _mapController.syncFacilityPins(
-          _visibleFacilities(state),
+          _facilitiesToRender(state),
           state.selectedFilter,
         ),
       );
@@ -587,6 +633,18 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               selected: state?.selectedFilter,
               onSelected: _viewModel.selectFilter,
             ),
+          ),
+          ValueListenableBuilder<double>(
+            valueListenable: _cameraZoom,
+            builder: (context, zoom, _) {
+              if (zoom >= _facilityVisibleZoom) return const _Nowhere();
+              return Positioned(
+                top: 108 + topInset,
+                left: 0,
+                right: 0,
+                child: const Center(child: ZoomInHint()),
+              );
+            },
           ),
           Positioned(
             right: 16,

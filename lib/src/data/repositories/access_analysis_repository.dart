@@ -2,12 +2,16 @@ import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/result.dart';
 import '../models/access_analysis.dart';
+import '../models/facility.dart';
 import '../models/geo_point.dart';
 import '../services/access_analysis_service.dart';
 import 'facility_repository.dart';
 
-final accessAnalysisRepositoryProvider = Provider<AccessAnalysisRepository>((ref) {
+final accessAnalysisRepositoryProvider = Provider<AccessAnalysisRepository>((
+  ref,
+) {
   return AccessAnalysisRepository(
     ref.watch(accessAnalysisServiceProvider),
     ref.watch(facilityRepositoryProvider),
@@ -20,22 +24,46 @@ class AccessAnalysisRepository {
   final AccessAnalysisService _service;
   final FacilityRepository _facilityRepository;
 
-  Future<AccessAnalysisResult> analyze({
+  /// Mapbox's Matrix API caps coordinates per request to 10 for
+  /// driving-traffic and 25 for other profiles. `/api/hospitals` returns
+  /// every Lagos facility (~2,900) with no geographic filter, so this has
+  /// to pick a bounded nearest subset itself before ever calling the
+  /// Matrix API — sending all of them would just fail the request.
+  static const _drivingTrafficMatrixCap = 10;
+  static const _otherProfileMatrixCap = 25;
+
+  Future<Result<AccessAnalysisResult>> analyze({
     required GeoPoint origin,
     required TransportMode mode,
     int thresholdMinutes = kAccessAnalysisThresholdMinutes,
   }) async {
-    final facilities = await _facilityRepository.nearbyFacilities(
-      latitude: origin.latitude,
-      longitude: origin.longitude,
+    final List<Facility> allFacilities;
+    switch (await _facilityRepository.allFacilities()) {
+      case Ok(:final value):
+        allFacilities = value;
+      case Err(:final failure):
+        return Err(failure);
+    }
+
+    final facilities = _nearestFacilities(
+      allFacilities,
+      origin: origin,
+      limit: mode == TransportMode.driving
+          ? _drivingTrafficMatrixCap
+          : _otherProfileMatrixCap,
     );
     final destinations = [
-      for (final facility in facilities) GeoPoint(latitude: facility.latitude, longitude: facility.longitude),
+      for (final facility in facilities)
+        GeoPoint(latitude: facility.latitude, longitude: facility.longitude),
     ];
 
     final results = await Future.wait([
       _service.fetchIsochrone(origin: origin, mode: mode),
-      _service.fetchDurations(origin: origin, destinations: destinations, mode: mode),
+      _service.fetchDurations(
+        origin: origin,
+        destinations: destinations,
+        mode: mode,
+      ),
     ]);
     final isochroneRings = results[0] as List<IsochroneRing>;
     final durations = results[1] as List<Duration?>;
@@ -69,17 +97,46 @@ class AccessAnalysisRepository {
 
     final population = reachable.isEmpty
         ? null
-        : reachable.fold<int>(0, (sum, entry) => sum + (entry.facility.catchmentPopulation ?? 0));
+        : reachable.fold<int>(
+            0,
+            (sum, entry) => sum + (entry.facility.catchmentPopulation ?? 0),
+          );
 
-    return AccessAnalysisResult(
-      mode: mode,
-      thresholdMinutes: thresholdMinutes,
-      reachableCount: reachable.length,
-      population: population,
-      closest: closest,
-      byBand: byBand,
-      isochroneRings: isochroneRings,
+    return Ok(
+      AccessAnalysisResult(
+        mode: mode,
+        thresholdMinutes: thresholdMinutes,
+        reachableCount: reachable.length,
+        population: population,
+        closest: closest,
+        byBand: byBand,
+        isochroneRings: isochroneRings,
+      ),
     );
+  }
+
+  /// The [limit] facilities closest to [origin] by straight-line distance —
+  /// the Matrix API call this feeds only has room for a handful, so this
+  /// has to pick which ones are worth asking a real ETA for.
+  List<Facility> _nearestFacilities(
+    List<Facility> facilities, {
+    required GeoPoint origin,
+    required int limit,
+  }) {
+    final sorted = [...facilities]
+      ..sort(
+        (a, b) =>
+            _haversineKm(
+              origin,
+              GeoPoint(latitude: a.latitude, longitude: a.longitude),
+            ).compareTo(
+              _haversineKm(
+                origin,
+                GeoPoint(latitude: b.latitude, longitude: b.longitude),
+              ),
+            ),
+      );
+    return sorted.take(limit).toList(growable: false);
   }
 
   double _haversineKm(GeoPoint a, GeoPoint b) {
@@ -88,7 +145,9 @@ class AccessAnalysisRepository {
     final dLng = _degToRad(b.longitude - a.longitude);
     final lat1 = _degToRad(a.latitude);
     final lat2 = _degToRad(b.latitude);
-    final h = sin(dLat / 2) * sin(dLat / 2) + sin(dLng / 2) * sin(dLng / 2) * cos(lat1) * cos(lat2);
+    final h =
+        sin(dLat / 2) * sin(dLat / 2) +
+        sin(dLng / 2) * sin(dLng / 2) * cos(lat1) * cos(lat2);
     return earthRadiusKm * 2 * atan2(sqrt(h), sqrt(1 - h));
   }
 
