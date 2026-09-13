@@ -60,6 +60,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// filter chips — dozens of times a second. A `ValueListenableBuilder`
   /// around just the popup keeps each update scoped to that small subtree.
   final ValueNotifier<Offset?> _popupAnchor = ValueNotifier(null);
+  final ValueNotifier<bool> _pingActive = ValueNotifier(false);
 
   /// Guards against overlapping `pixelForCoordinate` platform-channel calls:
   /// `onCameraChangeListener` fires on nearly every rendered frame during a
@@ -83,6 +84,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   @override
   void dispose() {
     _popupAnchor.dispose();
+    _pingActive.dispose();
     super.dispose();
   }
 
@@ -547,9 +549,44 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 ],
               ),
             ),
+          // Always resolves to a Positioned (even the "nothing to show" case)
+          // rather than a bare SizedBox: a Stack with even one genuinely
+          // non-positioned child sizes itself to that child instead of
+          // filling the screen, which collapsed every other Positioned
+          // sibling — including the SOS FAB — to (0, 0).
+          ValueListenableBuilder<bool>(
+            valueListenable: _pingActive,
+            builder: (context, active, _) {
+              if (!active) return const _Nowhere();
+              return ValueListenableBuilder<Offset?>(
+                valueListenable: _popupAnchor,
+                builder: (context, anchor, _) => anchor == null
+                    ? const _Nowhere()
+                    : Positioned(
+                        left: anchor.dx - 60,
+                        top: anchor.dy - 60,
+                        child: const IgnorePointer(
+                          child: _PingRadarPulse(size: 120),
+                        ),
+                      ),
+              );
+            },
+          ),
           if (state?.originSelection != null && state!.showGetHelpFast)
             Positioned.fill(
-              child: Center(
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _pingActive,
+                builder: (context, pinging, child) => Align(
+                  alignment: pinging
+                      ? Alignment.bottomCenter
+                      : Alignment.center,
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      bottom: pinging ? 16 + bottomInset : 0,
+                    ),
+                    child: child,
+                  ),
+                ),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
                     maxWidth: 340,
@@ -562,6 +599,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                         isPinnedLocation: !state.originSelection!.followsUser,
                         onDismiss: _clearPopup,
                         onBack: _viewModel.closeGetHelpFast,
+                        origin: state.originSelection!.point,
+                        onPingActiveChanged: (active) =>
+                            _pingActive.value = active,
                       ),
                     ),
                   ),
@@ -702,4 +742,80 @@ class _PopupTailPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _PopupTailPainter oldDelegate) => false;
+}
+
+/// A zero-size but still-`Positioned` placeholder — see the comment at its
+/// call site for why this can't just be a bare `SizedBox.shrink()`.
+class _Nowhere extends StatelessWidget {
+  const _Nowhere();
+
+  @override
+  Widget build(BuildContext context) => const Positioned(
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
+    child: SizedBox.shrink(),
+  );
+}
+
+class _PingRadarPulse extends StatefulWidget {
+  const _PingRadarPulse({required this.size});
+
+  final double size;
+
+  @override
+  State<_PingRadarPulse> createState() => _PingRadarPulseState();
+}
+
+class _PingRadarPulseState extends State<_PingRadarPulse>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 2),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.size,
+      height: widget.size,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final t = _controller.value;
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              Opacity(
+                opacity: (1 - t).clamp(0, 1),
+                child: Container(
+                  width: widget.size * t,
+                  height: widget.size * t,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.danger.withValues(alpha: 0.15),
+                  ),
+                ),
+              ),
+              Container(
+                width: 16,
+                height: 16,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.danger,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
