@@ -19,7 +19,9 @@ const _sectionHeaderStyle = TextStyle(
 Future<void> _openLink(BuildContext context, String url) async {
   final launched = await launchUrl(Uri.parse(url));
   if (!launched && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open link.')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Could not open link.')));
   }
 }
 
@@ -33,7 +35,12 @@ Future<void> _openLink(BuildContext context, String url) async {
 /// layer toggles, the Accessibility Analyzer defaults, Clear Analysis, and
 /// every footer link are wired to real state/actions.
 class HomeDrawer extends ConsumerWidget {
-  const HomeDrawer({super.key, required this.onUseCurrentLocation, required this.onClearAnalysis});
+  const HomeDrawer({
+    super.key,
+    required this.onUseCurrentLocation,
+    required this.onClearAnalysis,
+    this.searchFocusNode,
+  });
 
   /// Reuses the same recenter-on-user flow as the map's own "My Location"
   /// side button — that flow needs the screen's MapAnnotationController, so
@@ -44,10 +51,16 @@ class HomeDrawer extends ConsumerWidget {
   /// button, for the same reason.
   final VoidCallback onClearAnalysis;
 
+  /// Owned by the screen so its side-button search icon can open the
+  /// drawer and focus this field in one tap.
+  final FocusNode? searchFocusNode;
+
   static const _thresholdOptionsMinutes = [15, 30, 45, 60];
 
   void _comingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$feature is coming soon.')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$feature is coming soon.')));
   }
 
   @override
@@ -79,9 +92,16 @@ class HomeDrawer extends ConsumerWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Image.asset('assets/images/google_logo.png', width: 18, height: 18),
+                      Image.asset(
+                        'assets/images/google_logo.png',
+                        width: 18,
+                        height: 18,
+                      ),
                       const SizedBox(width: 8),
-                      const Text('Sign in with Google', style: TextStyle(fontWeight: FontWeight.w600)),
+                      const Text(
+                        'Sign in with Google',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ],
                   ),
                 ),
@@ -94,22 +114,28 @@ class HomeDrawer extends ConsumerWidget {
                 onUseCurrentLocation();
               },
               onSearch: () => _comingSoon(context, 'Facility search'),
+              focusNode: searchFocusNode,
             ),
             const Divider(height: 1),
             _MapLayersSection(
               selectedFilter: state?.selectedFilter,
               onFilterChanged: notifier.selectFilter,
               showEmergencyFacilities: state?.showEmergencyFacilities ?? true,
-              onToggleEmergencyFacilities: notifier.toggleEmergencyFacilitiesLayer,
+              onToggleEmergencyFacilities:
+                  notifier.toggleEmergencyFacilitiesLayer,
               showLiveTraffic: state?.showLiveTraffic ?? false,
               onToggleLiveTraffic: notifier.toggleLiveTrafficLayer,
-              onLagosBoundaryTap: () => _comingSoon(context, 'Lagos Boundary layer'),
+              onLagosBoundaryTap: () =>
+                  _comingSoon(context, 'Lagos Boundary layer'),
             ),
             const Divider(height: 1),
             _AnalyzerDefaultsSection(
-              selectedMode: state?.selectedTransportMode ?? TransportMode.driving,
+              selectedMode:
+                  state?.selectedTransportMode ?? TransportMode.driving,
               onModeChanged: notifier.setSelectedMode,
-              thresholdMinutes: state?.analysisThresholdMinutes ?? kAccessAnalysisThresholdMinutes,
+              thresholdMinutes:
+                  state?.analysisThresholdMinutes ??
+                  kAccessAnalysisThresholdMinutes,
               onThresholdChanged: notifier.setAnalysisThreshold,
               onClearAnalysis: () {
                 Scaffold.of(context).closeDrawer();
@@ -118,7 +144,8 @@ class HomeDrawer extends ConsumerWidget {
             ),
             _HelpLinksSection(
               onHowToUse: () => _comingSoon(context, 'How to Use This Map'),
-              onDataSources: () => _comingSoon(context, 'Data Sources & Credits'),
+              onDataSources: () =>
+                  _comingSoon(context, 'Data Sources & Credits'),
             ),
             const Divider(height: 1),
             const _Footer(),
@@ -151,12 +178,24 @@ class _Header extends StatelessWidget {
                   text: const TextSpan(
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                     children: [
-                      TextSpan(text: '911 ', style: TextStyle(color: AppColors.primary)),
-                      TextSpan(text: 'Rescue', style: TextStyle(color: AppColors.success)),
+                      TextSpan(
+                        text: '911 ',
+                        style: TextStyle(color: AppColors.primary),
+                      ),
+                      TextSpan(
+                        text: 'Rescue',
+                        style: TextStyle(color: AppColors.success),
+                      ),
                     ],
                   ),
                 ),
-                const Text('Emergency Finder', style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                const Text(
+                  'Emergency Finder',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 11,
+                  ),
+                ),
               ],
             ),
           ),
@@ -170,7 +209,11 @@ class _Header extends StatelessWidget {
               foregroundColor: AppColors.primary,
             ),
           ),
-          IconButton(icon: const Icon(Icons.close, size: 20), onPressed: onClose, tooltip: 'Close menu'),
+          IconButton(
+            icon: const Icon(Icons.close, size: 20),
+            onPressed: onClose,
+            tooltip: 'Close menu',
+          ),
         ],
       ),
     );
@@ -178,10 +221,15 @@ class _Header extends StatelessWidget {
 }
 
 class _SearchSection extends StatelessWidget {
-  const _SearchSection({required this.onUseCurrentLocation, required this.onSearch});
+  const _SearchSection({
+    required this.onUseCurrentLocation,
+    required this.onSearch,
+    this.focusNode,
+  });
 
   final VoidCallback onUseCurrentLocation;
   final VoidCallback onSearch;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -193,15 +241,19 @@ class _SearchSection extends StatelessWidget {
           const Text('SEARCH FACILITY', style: _sectionHeaderStyle),
           const SizedBox(height: 8),
           TextField(
+            focusNode: focusNode,
             onSubmitted: (_) => onSearch(),
             decoration: InputDecoration(
               hintText: 'Facilities name or address',
               filled: true,
               fillColor: AppColors.backgroundCanvas,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadii.sm),
-                borderSide: BorderSide.none,
+                borderSide: const BorderSide(color: AppColors.border),
               ),
             ),
           ),
@@ -249,28 +301,44 @@ class _MapLayersSection extends StatelessWidget {
         children: [
           const Text('MAP LAYERS', style: _sectionHeaderStyle),
           const SizedBox(height: 8),
-          const Text('Filter by Type:', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          const Text(
+            'Filter by Type:',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
           const SizedBox(height: 4),
           DropdownButtonFormField<FacilityCategory?>(
             initialValue: selectedFilter,
             decoration: InputDecoration(
               filled: true,
               fillColor: AppColors.backgroundCanvas,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 4,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadii.sm),
                 borderSide: BorderSide.none,
               ),
             ),
             items: [
-              const DropdownMenuItem(value: null, child: Text('All Facilities')),
+              const DropdownMenuItem(
+                value: null,
+                child: Text('All Facilities'),
+              ),
               for (final category in FacilityCategory.values)
-                DropdownMenuItem(value: category, child: Text(category.displayLabel)),
+                DropdownMenuItem(
+                  value: category,
+                  child: Text(category.displayLabel),
+                ),
             ],
             onChanged: onFilterChanged,
           ),
           const SizedBox(height: 12),
-          _LayerRow(label: 'Lagos Boundary', value: true, onChanged: (_) => onLagosBoundaryTap()),
+          _LayerRow(
+            label: 'Lagos Boundary',
+            value: true,
+            onChanged: (_) => onLagosBoundaryTap(),
+          ),
           _LayerRow(
             label: 'Emergency Facilities',
             value: showEmergencyFacilities,
@@ -288,7 +356,11 @@ class _MapLayersSection extends StatelessWidget {
 }
 
 class _LayerRow extends StatelessWidget {
-  const _LayerRow({required this.label, required this.value, required this.onChanged});
+  const _LayerRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
 
   final String label;
   final bool value;
@@ -339,14 +411,20 @@ class _AnalyzerDefaultsSection extends StatelessWidget {
         children: [
           const Text('ACCESSIBILITY ANALYZER', style: _sectionHeaderStyle),
           const SizedBox(height: 8),
-          const Text('Commute Mode:', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          const Text(
+            'Commute Mode:',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
           const SizedBox(height: 4),
           DropdownButtonFormField<TransportMode>(
             initialValue: selectedMode,
             decoration: InputDecoration(
               filled: true,
               fillColor: AppColors.backgroundCanvas,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 4,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadii.sm),
                 borderSide: BorderSide.none,
@@ -354,21 +432,30 @@ class _AnalyzerDefaultsSection extends StatelessWidget {
             ),
             items: [
               for (final mode in TransportMode.values)
-                DropdownMenuItem(value: mode, child: Text('${mode.emoji} ${mode.dropdownLabel}')),
+                DropdownMenuItem(
+                  value: mode,
+                  child: Text('${mode.emoji} ${mode.dropdownLabel}'),
+                ),
             ],
             onChanged: (mode) {
               if (mode != null) onModeChanged(mode);
             },
           ),
           const SizedBox(height: 12),
-          const Text('Max Time Threshold:', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          const Text(
+            'Max Time Threshold:',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
           const SizedBox(height: 4),
           DropdownButtonFormField<int>(
             initialValue: thresholdMinutes,
             decoration: InputDecoration(
               filled: true,
               fillColor: AppColors.backgroundCanvas,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 4,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadii.sm),
                 borderSide: BorderSide.none,
@@ -376,7 +463,10 @@ class _AnalyzerDefaultsSection extends StatelessWidget {
             ),
             items: [
               for (final minutes in HomeDrawer._thresholdOptionsMinutes)
-                DropdownMenuItem(value: minutes, child: Text('$minutes Minutes')),
+                DropdownMenuItem(
+                  value: minutes,
+                  child: Text('$minutes Minutes'),
+                ),
             ],
             onChanged: (minutes) {
               if (minutes != null) onThresholdChanged(minutes);
@@ -399,7 +489,10 @@ class _AnalyzerDefaultsSection extends StatelessWidget {
 }
 
 class _HelpLinksSection extends StatelessWidget {
-  const _HelpLinksSection({required this.onHowToUse, required this.onDataSources});
+  const _HelpLinksSection({
+    required this.onHowToUse,
+    required this.onDataSources,
+  });
 
   final VoidCallback onHowToUse;
   final VoidCallback onDataSources;
@@ -449,7 +542,8 @@ class _Footer extends StatelessWidget {
             children: [
               Expanded(
                 child: GestureDetector(
-                  onTap: () => _openLink(context, 'https://bwanalytics.com.ng/'),
+                  onTap: () =>
+                      _openLink(context, 'https://bwanalytics.com.ng/'),
                   child: const Text(
                     'Made by BW Analytics',
                     style: TextStyle(
@@ -461,7 +555,10 @@ class _Footer extends StatelessWidget {
                 ),
               ),
               InkWell(
-                onTap: () => _openLink(context, 'https://www.linkedin.com/company/bwanalytics/'),
+                onTap: () => _openLink(
+                  context,
+                  'https://www.linkedin.com/company/bwanalytics/',
+                ),
                 child: Image.asset(
                   'assets/images/linkedin_icon.png',
                   width: 22,
@@ -486,11 +583,17 @@ class _Footer extends StatelessWidget {
           const SizedBox(height: 4),
           GestureDetector(
             onTap: () => _openLink(context, 'mailto:ogdi@bwanalytics.com'),
-            child: const Text('ogdi@bwanalytics.com', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            child: const Text(
+              'ogdi@bwanalytics.com',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
           ),
           GestureDetector(
             onTap: () => _openLink(context, 'tel:+2348154225124'),
-            child: const Text('+234 815 422 5124', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            child: const Text(
+              '+234 815 422 5124',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            ),
           ),
         ],
       ),

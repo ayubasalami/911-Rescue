@@ -89,6 +89,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// open doesn't also auto-start a ping.
   FacilityCategory? _pendingSosCategory;
 
+  /// Owned here (not by [HomeDrawer]) so the map's side-button search icon
+  /// can request focus on the drawer's search field from outside it.
+  final FocusNode _searchFocusNode = FocusNode();
+
   HomeMapViewModel get _viewModel =>
       ref.read(homeMapViewModelProvider.notifier);
 
@@ -96,6 +100,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   void dispose() {
     _popupAnchor.dispose();
     _pingActive.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -522,6 +527,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       drawer: HomeDrawer(
         onUseCurrentLocation: _recenterOnUser,
         onClearAnalysis: _cancelAnalysis,
+        searchFocusNode: _searchFocusNode,
       ),
       body: Stack(
         children: [
@@ -596,7 +602,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 const SizedBox(height: 8),
                 MapControlButton(
                   icon: Icons.search,
-                  onTap: () => _showComingSoon('Search'),
+                  onTap: () {
+                    _scaffoldKey.currentState?.openDrawer();
+                    _searchFocusNode.requestFocus();
+                  },
                 ),
                 const SizedBox(height: 8),
                 MapControlButton(
