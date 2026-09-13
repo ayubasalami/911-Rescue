@@ -43,12 +43,20 @@ class AccessOriginPopup extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.location_on, color: AppColors.primary, size: 20),
+                const Icon(
+                  Icons.location_on,
+                  color: AppColors.primary,
+                  size: 20,
+                ),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 16),
+                    style: const TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
                 InkWell(
@@ -56,7 +64,11 @@ class AccessOriginPopup extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppRadii.full),
                   child: const Padding(
                     padding: EdgeInsets.all(4),
-                    child: Icon(Icons.close, size: 18, color: AppColors.textSecondary),
+                    child: Icon(
+                      Icons.close,
+                      size: 18,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
               ],
@@ -72,7 +84,8 @@ class AccessOriginPopup extends StatelessWidget {
                       onTap: () => onModeSelected(mode),
                     ),
                   ),
-                  if (mode != TransportMode.values.last) const SizedBox(width: 8),
+                  if (mode != TransportMode.values.last)
+                    const SizedBox(width: 8),
                 ],
               ],
             ),
@@ -89,10 +102,9 @@ class AccessOriginPopup extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: AppButton(
-                label: 'Get Help Fast',
+                label: '🚨 Get Help Fast',
                 onPressed: onGetHelpFast,
                 variant: AppButtonVariant.danger,
-                icon: Icons.warning_amber_rounded,
               ),
             ),
           ],

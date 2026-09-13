@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/facility.dart';
+import '../../core/widgets/facility_category_glyph.dart';
 import 'map_legend.dart';
 
 class FacilitySummarySheet extends StatelessWidget {
@@ -21,12 +22,25 @@ class FacilitySummarySheet extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(AppRadii.sm),
             child: crestAsset != null
-                ? Image.asset(crestAsset, width: 48, height: 48, fit: BoxFit.cover)
+                ? Image.asset(
+                    crestAsset,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                  )
                 : Container(
                     width: 48,
                     height: 48,
-                    color: facility.category.legendColor.withValues(alpha: 0.12),
-                    child: Icon(facility.category.legendIcon, color: facility.category.legendColor, size: 24),
+                    color: facility.category.legendColor.withValues(
+                      alpha: 0.12,
+                    ),
+                    child: Center(
+                      child: FacilityCategoryGlyph(
+                        category: facility.category,
+                        color: facility.category.legendColor,
+                        size: 24,
+                      ),
+                    ),
                   ),
           ),
           const SizedBox(width: 12),
@@ -34,7 +48,13 @@ class FacilitySummarySheet extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(facility.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                Text(
+                  facility.name,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(height: 2),
                 Text(
                   facility.category.displayLabel.toUpperCase(),
@@ -46,7 +66,10 @@ class FacilitySummarySheet extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Text(facility.address, style: const TextStyle(color: AppColors.textSecondary)),
+                Text(
+                  facility.address,
+                  style: const TextStyle(color: AppColors.textSecondary),
+                ),
               ],
             ),
           ),

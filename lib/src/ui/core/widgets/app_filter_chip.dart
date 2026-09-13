@@ -9,7 +9,6 @@ class AppFilterChip extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.icon,
-    this.iconColor,
   });
 
   final String label;
@@ -17,9 +16,11 @@ class AppFilterChip extends StatelessWidget {
   final VoidCallback onTap;
 
   /// Optional leading icon (e.g. the facility category glyph in the map's
-  /// filter row) — omitted entirely when null.
-  final IconData? icon;
-  final Color? iconColor;
+  /// filter row) — omitted entirely when null. A widget rather than
+  /// `IconData` so callers can pass custom-drawn glyphs (see
+  /// `FacilityCategoryGlyph`), not just font icons; the caller is
+  /// responsible for its color (e.g. white when [selected]).
+  final Widget? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -36,10 +37,7 @@ class AppFilterChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null) ...[
-              Icon(icon, size: 16, color: selected ? Colors.white : iconColor),
-              const SizedBox(width: 6),
-            ],
+            if (icon != null) ...[icon!, const SizedBox(width: 6)],
             Text(
               label,
               style: TextStyle(

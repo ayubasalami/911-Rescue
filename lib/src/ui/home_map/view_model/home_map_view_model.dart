@@ -65,6 +65,7 @@ class HomeMapState {
     this.analysisThresholdMinutes = kAccessAnalysisThresholdMinutes,
     this.originSelection,
     this.selectedFacility,
+    this.showGetHelpFast = false,
     this.errorMessage,
   });
 
@@ -99,6 +100,11 @@ class HomeMapState {
   final OriginSelection? originSelection;
   final Facility? selectedFacility;
 
+  /// Whether the origin popup is showing its "Get Help Fast" content in
+  /// place of the normal analyzer content — swaps in-place, anchored at the
+  /// same map point, rather than opening a separate sheet.
+  final bool showGetHelpFast;
+
   /// A one-shot message for the View to surface (e.g. via SnackBar), then
   /// clear with [HomeMapViewModel.clearErrorMessage] so it isn't shown
   /// again on the next rebuild.
@@ -122,6 +128,7 @@ class HomeMapState {
     int? analysisThresholdMinutes,
     Object? originSelection = _unset,
     Object? selectedFacility = _unset,
+    bool? showGetHelpFast,
     Object? errorMessage = _unset,
   }) {
     return HomeMapState(
@@ -131,28 +138,35 @@ class HomeMapState {
       selectedFilter: identical(selectedFilter, _unset)
           ? this.selectedFilter
           : selectedFilter as FacilityCategory?,
-      selectedTransportMode: selectedTransportMode ?? this.selectedTransportMode,
+      selectedTransportMode:
+          selectedTransportMode ?? this.selectedTransportMode,
       activeAnalysis: identical(activeAnalysis, _unset)
           ? this.activeAnalysis
           : activeAnalysis as AccessAnalysisResult?,
       activeAnalysisOrigin: identical(activeAnalysisOrigin, _unset)
           ? this.activeAnalysisOrigin
           : activeAnalysisOrigin as GeoPoint?,
-      activeAnalysisFollowsUser: activeAnalysisFollowsUser ?? this.activeAnalysisFollowsUser,
+      activeAnalysisFollowsUser:
+          activeAnalysisFollowsUser ?? this.activeAnalysisFollowsUser,
       showAnalysisSheet: showAnalysisSheet ?? this.showAnalysisSheet,
       showChangeModeCard: showChangeModeCard ?? this.showChangeModeCard,
       showLegend: showLegend ?? this.showLegend,
       showSosMenu: showSosMenu ?? this.showSosMenu,
-      showEmergencyFacilities: showEmergencyFacilities ?? this.showEmergencyFacilities,
+      showEmergencyFacilities:
+          showEmergencyFacilities ?? this.showEmergencyFacilities,
       showLiveTraffic: showLiveTraffic ?? this.showLiveTraffic,
-      analysisThresholdMinutes: analysisThresholdMinutes ?? this.analysisThresholdMinutes,
+      analysisThresholdMinutes:
+          analysisThresholdMinutes ?? this.analysisThresholdMinutes,
       originSelection: identical(originSelection, _unset)
           ? this.originSelection
           : originSelection as OriginSelection?,
       selectedFacility: identical(selectedFacility, _unset)
           ? this.selectedFacility
           : selectedFacility as Facility?,
-      errorMessage: identical(errorMessage, _unset) ? this.errorMessage : errorMessage as String?,
+      showGetHelpFast: showGetHelpFast ?? this.showGetHelpFast,
+      errorMessage: identical(errorMessage, _unset)
+          ? this.errorMessage
+          : errorMessage as String?,
     );
   }
 }
@@ -170,11 +184,16 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   Future<HomeMapState> build() => _load();
 
   Future<HomeMapState> _load() async {
-    final locationResult = await ref.read(locationRepositoryProvider).currentPosition();
+    final locationResult = await ref
+        .read(locationRepositoryProvider)
+        .currentPosition();
     final center = locationResult.position ?? defaultMapCenter;
     final facilities = await ref
         .read(facilityRepositoryProvider)
-        .nearbyFacilities(latitude: center.latitude, longitude: center.longitude);
+        .nearbyFacilities(
+          latitude: center.latitude,
+          longitude: center.longitude,
+        );
     return HomeMapState(
       facilities: facilities,
       center: center,
@@ -196,11 +215,13 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     state = AsyncData(update(current));
   }
 
-  void _setError(String message) => _update((s) => s.copyWith(errorMessage: message));
+  void _setError(String message) =>
+      _update((s) => s.copyWith(errorMessage: message));
 
   void clearErrorMessage() => _update((s) => s.copyWith(errorMessage: null));
 
-  void selectFilter(FacilityCategory? filter) => _update((s) => s.copyWith(selectedFilter: filter));
+  void selectFilter(FacilityCategory? filter) =>
+      _update((s) => s.copyWith(selectedFilter: filter));
 
   /// Just switches the selected transport mode — used by the origin popup's
   /// mode picker before an analysis has been run. See [changeCommuteMode]
@@ -222,24 +243,48 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         followsUser: followsUser,
       ),
       selectedFacility: null,
+      showGetHelpFast: false,
     ),
   );
 
-  void selectFacility(Facility facility) =>
-      _update((s) => s.copyWith(selectedFacility: facility, originSelection: null));
+  void selectFacility(Facility facility) => _update(
+    (s) => s.copyWith(
+      selectedFacility: facility,
+      originSelection: null,
+      showGetHelpFast: false,
+    ),
+  );
 
-  void clearPopups() => _update((s) => s.copyWith(originSelection: null, selectedFacility: null));
+  void clearPopups() => _update(
+    (s) => s.copyWith(
+      originSelection: null,
+      selectedFacility: null,
+      showGetHelpFast: false,
+    ),
+  );
+
+  /// Swaps the origin popup's content to "Get Help Fast," anchored at the
+  /// same map point — matches the web platform, where this replaces the
+  /// analyzer card in place rather than opening a separate sheet.
+  void openGetHelpFast() => _update((s) => s.copyWith(showGetHelpFast: true));
+
+  /// Swaps back to the origin popup (dropped pin or "Your Location") that
+  /// "Get Help Fast" was opened from, without closing the popup entirely.
+  void closeGetHelpFast() => _update((s) => s.copyWith(showGetHelpFast: false));
 
   void toggleLegend() => _update((s) => s.copyWith(showLegend: !s.showLegend));
 
-  void toggleSosMenu() => _update((s) => s.copyWith(showSosMenu: !s.showSosMenu));
+  void toggleSosMenu() =>
+      _update((s) => s.copyWith(showSosMenu: !s.showSosMenu));
 
   void closeSosMenu() => _update((s) => s.copyWith(showSosMenu: false));
 
-  void dismissChangeModeCard() => _update((s) => s.copyWith(showChangeModeCard: false));
+  void dismissChangeModeCard() =>
+      _update((s) => s.copyWith(showChangeModeCard: false));
 
-  void toggleEmergencyFacilitiesLayer() =>
-      _update((s) => s.copyWith(showEmergencyFacilities: !s.showEmergencyFacilities));
+  void toggleEmergencyFacilitiesLayer() => _update(
+    (s) => s.copyWith(showEmergencyFacilities: !s.showEmergencyFacilities),
+  );
 
   void toggleLiveTrafficLayer() =>
       _update((s) => s.copyWith(showLiveTraffic: !s.showLiveTraffic));
@@ -247,9 +292,11 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   void setAnalysisThreshold(int minutes) =>
       _update((s) => s.copyWith(analysisThresholdMinutes: minutes));
 
-  void dismissAnalysisSheet() => _update((s) => s.copyWith(showAnalysisSheet: false));
+  void dismissAnalysisSheet() =>
+      _update((s) => s.copyWith(showAnalysisSheet: false));
 
-  void reopenAnalysisSheet() => _update((s) => s.copyWith(showAnalysisSheet: true));
+  void reopenAnalysisSheet() =>
+      _update((s) => s.copyWith(showAnalysisSheet: true));
 
   /// Runs (or re-runs, on a mode change) the analysis for [origin]. Leaving
   /// an analysis active and only closing its sheet must not cancel it —
@@ -268,7 +315,9 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
           .analyze(
             origin: origin,
             mode: state.value?.selectedTransportMode ?? TransportMode.driving,
-            thresholdMinutes: state.value?.analysisThresholdMinutes ?? kAccessAnalysisThresholdMinutes,
+            thresholdMinutes:
+                state.value?.analysisThresholdMinutes ??
+                kAccessAnalysisThresholdMinutes,
           );
     } catch (error) {
       _setError('Could not run accessibility analysis: $error');
@@ -291,7 +340,11 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     final current = state.value;
     final origin = current?.activeAnalysisOrigin;
     if (origin != null) {
-      await runAnalysis(origin, openSheet: false, followsUser: current!.activeAnalysisFollowsUser);
+      await runAnalysis(
+        origin,
+        openSheet: false,
+        followsUser: current!.activeAnalysisFollowsUser,
+      );
     }
   }
 
@@ -332,12 +385,20 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   Future<GeoPoint?> recenterOnUser() async {
     final point = await currentUserLocation();
     if (point != null) {
-      selectOrigin(point: point, title: 'Your Location', analyzeLabel: 'Analyze Access', followsUser: true);
+      selectOrigin(
+        point: point,
+        title: 'Your Location',
+        analyzeLabel: 'Analyze Access',
+        followsUser: true,
+      );
     }
     return point;
   }
 
-  Future<DirectionsRoute?> fetchRoute(GeoPoint origin, GeoPoint destination) async {
+  Future<DirectionsRoute?> fetchRoute(
+    GeoPoint origin,
+    GeoPoint destination,
+  ) async {
     try {
       return await ref
           .read(accessAnalysisServiceProvider)

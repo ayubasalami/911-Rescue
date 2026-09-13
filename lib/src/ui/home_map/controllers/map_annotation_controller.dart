@@ -8,13 +8,17 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
+import '../../core/widgets/facility_category_glyph.dart';
 import '../widgets/map_legend.dart';
 
 mapbox.Point mapboxPointFrom(GeoPoint point) =>
     mapbox.Point(coordinates: mapbox.Position(point.longitude, point.latitude));
 
 int _colorForBandMinutes(int minutes) => TimeBand.bands
-    .firstWhere((band) => band.maxMinutes == minutes, orElse: () => TimeBand.bands.last)
+    .firstWhere(
+      (band) => band.maxMinutes == minutes,
+      orElse: () => TimeBand.bands.last,
+    )
     .color;
 
 /// Rasterizes a facility category's legend glyph (colored circle + white
@@ -30,19 +34,11 @@ Future<Uint8List> _renderCategoryMarker(FacilityCategory category) async {
   canvas.drawCircle(center, radius, Paint()..color = Colors.white);
   canvas.drawCircle(center, radius - 4, Paint()..color = category.legendColor);
 
-  final icon = category.legendIcon;
-  final textPainter = TextPainter(textDirection: TextDirection.ltr)
-    ..text = TextSpan(
-      text: String.fromCharCode(icon.codePoint),
-      style: TextStyle(
-        fontSize: size * 0.48,
-        fontFamily: icon.fontFamily,
-        package: icon.fontPackage,
-        color: Colors.white,
-      ),
-    )
-    ..layout();
-  textPainter.paint(canvas, center - Offset(textPainter.width / 2, textPainter.height / 2));
+  const glyphSize = size * 0.46;
+  canvas.save();
+  canvas.translate(center.dx - glyphSize / 2, center.dy - glyphSize / 2);
+  paintFacilityCategoryGlyph(canvas, category, Colors.white, glyphSize);
+  canvas.restore();
 
   final picture = recorder.endRecording();
   final image = await picture.toImage(size.toInt(), size.toInt());
@@ -69,7 +65,10 @@ Future<Uint8List> _renderLocationPinImage() async {
       ),
     )
     ..layout();
-  textPainter.paint(canvas, Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2));
+  textPainter.paint(
+    canvas,
+    Offset((size - textPainter.width) / 2, (size - textPainter.height) / 2),
+  );
 
   final picture = recorder.endRecording();
   final image = await picture.toImage(size.toInt(), size.toInt());
@@ -106,29 +105,35 @@ class MapAnnotationController {
   bool _trafficLayerAdded = false;
   bool? _lastTrafficVisible;
 
-  Facility? facilityForAnnotation(String annotationId) => _annotationFacilities[annotationId];
+  Facility? facilityForAnnotation(String annotationId) =>
+      _annotationFacilities[annotationId];
 
   Future<void> onMapCreated(
     mapbox.MapboxMap mapboxMap, {
     required void Function(mapbox.PointAnnotation) onFacilityTap,
   }) async {
     _map = mapboxMap;
-    _polygonManager = await mapboxMap.annotations.createPolygonAnnotationManager();
+    _polygonManager = await mapboxMap.annotations
+        .createPolygonAnnotationManager();
 
-    final facilityManager = await mapboxMap.annotations.createPointAnnotationManager();
+    final facilityManager = await mapboxMap.annotations
+        .createPointAnnotationManager();
     _facilityManager = facilityManager;
     facilityManager.tapEvents(onTap: onFacilityTap);
 
     _originManager = await mapboxMap.annotations.createPointAnnotationManager();
 
-    _polylineManager = await mapboxMap.annotations.createPolylineAnnotationManager();
+    _polylineManager = await mapboxMap.annotations
+        .createPolylineAnnotationManager();
 
     await mapboxMap.location.updateSettings(
       mapbox.LocationComponentSettings(
         enabled: true,
         puckBearingEnabled: false,
         locationPuck: mapbox.LocationPuck(
-          locationPuck2D: mapbox.LocationPuck2D(topImage: await _renderLocationPinImage()),
+          locationPuck2D: mapbox.LocationPuck2D(
+            topImage: await _renderLocationPinImage(),
+          ),
         ),
       ),
     );
@@ -154,10 +159,14 @@ class MapAnnotationController {
     return _markerImages[category] ??= await _renderCategoryMarker(category);
   }
 
-  Future<void> syncFacilityPins(List<Facility> facilities, FacilityCategory? filter) async {
+  Future<void> syncFacilityPins(
+    List<Facility> facilities,
+    FacilityCategory? filter,
+  ) async {
     final manager = _facilityManager;
     if (manager == null) return;
-    if (identical(facilities, _lastSourceFacilities) && _lastAppliedFilter == filter) {
+    if (identical(facilities, _lastSourceFacilities) &&
+        _lastAppliedFilter == filter) {
       return;
     }
     _lastSourceFacilities = facilities;
@@ -173,7 +182,9 @@ class MapAnnotationController {
     final created = await manager.createMulti([
       for (final facility in visible)
         mapbox.PointAnnotationOptions(
-          geometry: mapbox.Point(coordinates: mapbox.Position(facility.longitude, facility.latitude)),
+          geometry: mapbox.Point(
+            coordinates: mapbox.Position(facility.longitude, facility.latitude),
+          ),
           image: await _markerImageFor(facility.category),
           iconSize: 0.80,
         ),
@@ -227,7 +238,10 @@ class MapAnnotationController {
     if (!_trafficLayerAdded) {
       if (!visible) return;
       await map.style.addSource(
-        mapbox.VectorSource(id: _trafficSourceId, url: 'mapbox://mapbox.mapbox-traffic-v1'),
+        mapbox.VectorSource(
+          id: _trafficSourceId,
+          url: 'mapbox://mapbox.mapbox-traffic-v1',
+        ),
       );
       await map.style.addLayer(
         mapbox.LineLayer(
@@ -238,10 +252,14 @@ class MapAnnotationController {
           lineColorExpression: const [
             'match',
             ['get', 'congestion'],
-            'low', '#2ECC71',
-            'moderate', '#F1C40F',
-            'heavy', '#E67E22',
-            'severe', '#C0392B',
+            'low',
+            '#2ECC71',
+            'moderate',
+            '#F1C40F',
+            'heavy',
+            '#E67E22',
+            'severe',
+            '#C0392B',
             '#2ECC71',
           ],
         ),
@@ -267,7 +285,10 @@ class MapAnnotationController {
         mapbox.PolygonAnnotationOptions(
           geometry: mapbox.Polygon(
             coordinates: [
-              [for (final point in ring.points) mapbox.Position(point.longitude, point.latitude)],
+              [
+                for (final point in ring.points)
+                  mapbox.Position(point.longitude, point.latitude),
+              ],
             ],
           ),
           fillColor: _colorForBandMinutes(ring.minutes),
@@ -283,7 +304,10 @@ class MapAnnotationController {
     await manager.create(
       mapbox.PolylineAnnotationOptions(
         geometry: mapbox.LineString(
-          coordinates: [for (final point in points) mapbox.Position(point.longitude, point.latitude)],
+          coordinates: [
+            for (final point in points)
+              mapbox.Position(point.longitude, point.latitude),
+          ],
         ),
         lineColor: AppColors.success.toARGB32(),
         lineWidth: 4,

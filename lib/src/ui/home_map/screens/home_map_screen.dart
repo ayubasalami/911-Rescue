@@ -189,16 +189,6 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _popupAnchor.value = null;
   }
 
-  void _openGetHelpSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) =>
-          GetHelpSheet(onDismiss: () => Navigator.of(sheetContext).pop()),
-    );
-  }
-
   Future<void> _call112() async {
     _viewModel.closeSosMenu();
     final uri = Uri(scheme: 'tel', path: '112');
@@ -557,7 +547,28 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 ],
               ),
             ),
-          if (state?.originSelection != null)
+          if (state?.originSelection != null && state!.showGetHelpFast)
+            Positioned.fill(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: 340,
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: SingleChildScrollView(
+                      child: GetHelpSheet(
+                        isPinnedLocation: !state.originSelection!.followsUser,
+                        onDismiss: _clearPopup,
+                        onBack: _viewModel.closeGetHelpFast,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else if (state?.originSelection != null)
             ValueListenableBuilder<Offset?>(
               valueListenable: _popupAnchor,
               builder: (context, anchor, _) => anchor == null
@@ -573,10 +584,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                           state.originSelection!.point,
                           followsUser: state.originSelection!.followsUser,
                         ),
-                        onGetHelpFast: () {
-                          _clearPopup();
-                          _openGetHelpSheet();
-                        },
+                        onGetHelpFast: _viewModel.openGetHelpFast,
                         onClose: _clearPopup,
                       ),
                     ),
