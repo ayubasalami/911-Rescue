@@ -1,3 +1,5 @@
+import 'dart:async' show StreamSubscription;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -73,6 +75,8 @@ class HomeMapState {
     this.goToHelpLoading = false,
     this.goToHelpOrigin,
     this.goToHelpFollowsUser = false,
+    this.goToHelpTracking = false,
+    this.goToHelpAccuracyMeters,
     this.errorMessage,
   });
 
@@ -134,6 +138,16 @@ class HomeMapState {
   final GeoPoint? goToHelpOrigin;
   final bool goToHelpFollowsUser;
 
+  /// Whether "Start" has been tapped — the live-navigation card layout
+  /// (FOLLOWING YOU header, GPS signal) instead of the static preview, and
+  /// [goToHelpOrigin]/[goToHelpRoute] now track the live GPS stream rather
+  /// than a one-shot fetch.
+  final bool goToHelpTracking;
+
+  /// The last GPS fix's accuracy while tracking, for the "Weak/Good GPS
+  /// signal" line — null when not tracking or before the first fix arrives.
+  final double? goToHelpAccuracyMeters;
+
   /// A one-shot message for the View to surface (e.g. via SnackBar), then
   /// clear with [HomeMapViewModel.clearErrorMessage] so it isn't shown
   /// again on the next rebuild.
@@ -164,6 +178,8 @@ class HomeMapState {
     bool? goToHelpLoading,
     Object? goToHelpOrigin = _unset,
     bool? goToHelpFollowsUser,
+    bool? goToHelpTracking,
+    Object? goToHelpAccuracyMeters = _unset,
     Object? errorMessage = _unset,
   }) {
     return HomeMapState(
@@ -211,6 +227,10 @@ class HomeMapState {
           ? this.goToHelpOrigin
           : goToHelpOrigin as GeoPoint?,
       goToHelpFollowsUser: goToHelpFollowsUser ?? this.goToHelpFollowsUser,
+      goToHelpTracking: goToHelpTracking ?? this.goToHelpTracking,
+      goToHelpAccuracyMeters: identical(goToHelpAccuracyMeters, _unset)
+          ? this.goToHelpAccuracyMeters
+          : goToHelpAccuracyMeters as double?,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
@@ -227,8 +247,14 @@ class HomeMapState {
 /// [HomeMapScreen] and [MapAnnotationController], since a ViewModel holding
 /// either would defeat the point of separating them out.
 class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
+  StreamSubscription<TrackedPosition>? _trackingSubscription;
+  DateTime? _lastGoToHelpRouteFetch;
+
   @override
-  Future<HomeMapState> build() => _load();
+  Future<HomeMapState> build() {
+    ref.onDispose(() => _trackingSubscription?.cancel());
+    return _load();
+  }
 
   Future<HomeMapState> _load() async {
     final locationResult = await ref
@@ -276,51 +302,75 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   void setSelectedMode(TransportMode mode) =>
       _update((s) => s.copyWith(selectedTransportMode: mode));
 
+  /// Stops the live position stream backing "Start" tracking, if any —
+  /// called whenever the Go to Help route itself is being torn down, so a
+  /// stale subscription doesn't keep updating a route that's no longer
+  /// shown.
+  void _cancelTracking() {
+    _trackingSubscription?.cancel();
+    _trackingSubscription = null;
+  }
+
   void selectOrigin({
     required GeoPoint point,
     required String title,
     required String analyzeLabel,
     bool followsUser = false,
-  }) => _update(
-    (s) => s.copyWith(
-      originSelection: OriginSelection(
-        point: point,
-        title: title,
-        analyzeLabel: analyzeLabel,
-        followsUser: followsUser,
+  }) {
+    _cancelTracking();
+    _update(
+      (s) => s.copyWith(
+        originSelection: OriginSelection(
+          point: point,
+          title: title,
+          analyzeLabel: analyzeLabel,
+          followsUser: followsUser,
+        ),
+        selectedFacility: null,
+        showGetHelpFast: false,
+        goToHelpDestination: null,
+        goToHelpRoute: null,
+        goToHelpOrigin: null,
+        goToHelpFollowsUser: false,
+        goToHelpTracking: false,
+        goToHelpAccuracyMeters: null,
       ),
-      selectedFacility: null,
-      showGetHelpFast: false,
-      goToHelpDestination: null,
-      goToHelpRoute: null,
-      goToHelpOrigin: null,
-      goToHelpFollowsUser: false,
-    ),
-  );
+    );
+  }
 
-  void selectFacility(Facility facility) => _update(
-    (s) => s.copyWith(
-      selectedFacility: facility,
-      originSelection: null,
-      showGetHelpFast: false,
-      goToHelpDestination: null,
-      goToHelpRoute: null,
-      goToHelpOrigin: null,
-      goToHelpFollowsUser: false,
-    ),
-  );
+  void selectFacility(Facility facility) {
+    _cancelTracking();
+    _update(
+      (s) => s.copyWith(
+        selectedFacility: facility,
+        originSelection: null,
+        showGetHelpFast: false,
+        goToHelpDestination: null,
+        goToHelpRoute: null,
+        goToHelpOrigin: null,
+        goToHelpFollowsUser: false,
+        goToHelpTracking: false,
+        goToHelpAccuracyMeters: null,
+      ),
+    );
+  }
 
-  void clearPopups() => _update(
-    (s) => s.copyWith(
-      originSelection: null,
-      selectedFacility: null,
-      showGetHelpFast: false,
-      goToHelpDestination: null,
-      goToHelpRoute: null,
-      goToHelpOrigin: null,
-      goToHelpFollowsUser: false,
-    ),
-  );
+  void clearPopups() {
+    _cancelTracking();
+    _update(
+      (s) => s.copyWith(
+        originSelection: null,
+        selectedFacility: null,
+        showGetHelpFast: false,
+        goToHelpDestination: null,
+        goToHelpRoute: null,
+        goToHelpOrigin: null,
+        goToHelpFollowsUser: false,
+        goToHelpTracking: false,
+        goToHelpAccuracyMeters: null,
+      ),
+    );
+  }
 
   /// Swaps the origin popup's content to "Get Help Fast," anchored at the
   /// same map point — matches the web platform, where this replaces the
@@ -581,15 +631,78 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
 
   /// Cancels the active Go to Help route entirely — matches the web
   /// platform's "Route active" chip close button.
-  void closeGoToHelp() => _update(
-    (s) => s.copyWith(
-      goToHelpDestination: null,
-      goToHelpRoute: null,
-      goToHelpLoading: false,
-      goToHelpOrigin: null,
-      goToHelpFollowsUser: false,
-    ),
-  );
+  void closeGoToHelp() {
+    _cancelTracking();
+    _update(
+      (s) => s.copyWith(
+        goToHelpDestination: null,
+        goToHelpRoute: null,
+        goToHelpLoading: false,
+        goToHelpOrigin: null,
+        goToHelpFollowsUser: false,
+        goToHelpTracking: false,
+        goToHelpAccuracyMeters: null,
+      ),
+    );
+  }
+
+  /// Starts live GPS tracking for the active route — the web platform's
+  /// "Start": the origin now follows the live position stream instead of a
+  /// one-shot fetch, and the route is periodically re-fetched from wherever
+  /// the user actually is.
+  Future<void> startGoToHelpTracking() async {
+    if (state.value?.goToHelpDestination == null) return;
+    _cancelTracking();
+    _lastGoToHelpRouteFetch = null;
+    _update((s) => s.copyWith(goToHelpTracking: true));
+    _trackingSubscription = ref
+        .read(locationRepositoryProvider)
+        .positionStream()
+        .listen(_onTrackedPosition);
+  }
+
+  /// Stops live tracking and reverts to the static route preview — the web
+  /// platform's "Stop." Leaves the route itself (destination, last-known
+  /// path) in place, unlike [closeGoToHelp].
+  void stopGoToHelpTracking() {
+    _cancelTracking();
+    _update((s) => s.copyWith(goToHelpTracking: false));
+  }
+
+  /// Moves the route's origin to each live GPS fix and, at most once every
+  /// 10 seconds, re-fetches the route from there — re-fetching on every fix
+  /// (which can arrive every few meters of movement) would hammer the
+  /// Directions API far more than the ETA/geometry actually needs.
+  Future<void> _onTrackedPosition(TrackedPosition tracked) async {
+    final destination = state.value?.goToHelpDestination;
+    if (destination == null) {
+      stopGoToHelpTracking();
+      return;
+    }
+
+    _update(
+      (s) => s.copyWith(
+        goToHelpOrigin: tracked.point,
+        goToHelpAccuracyMeters: tracked.accuracyMeters,
+      ),
+    );
+
+    final now = DateTime.now();
+    final last = _lastGoToHelpRouteFetch;
+    if (last != null && now.difference(last) < const Duration(seconds: 10)) {
+      return;
+    }
+    _lastGoToHelpRouteFetch = now;
+
+    final route = await fetchRoute(
+      tracked.point,
+      GeoPoint(
+        latitude: destination.latitude,
+        longitude: destination.longitude,
+      ),
+    );
+    if (route != null) _update((s) => s.copyWith(goToHelpRoute: route));
+  }
 }
 
 final homeMapViewModelProvider =

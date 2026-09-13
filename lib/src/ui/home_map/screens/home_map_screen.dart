@@ -229,6 +229,26 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     await _mapController.clearIsochroneAndRoute();
   }
 
+  /// Begins live GPS tracking for the active route — the web platform's
+  /// "Start" — and recenters the camera on the live origin once, rather
+  /// than on every subsequent GPS fix (which would repeatedly wrest the
+  /// camera away from a user trying to pan/zoom manually).
+  Future<void> _startTracking() async {
+    await _viewModel.startGoToHelpTracking();
+    final origin = ref.read(homeMapViewModelProvider).value?.goToHelpOrigin;
+    if (!mounted || origin == null) return;
+    await _mapController.flyTo(origin);
+  }
+
+  void _viewGoToHelpSteps(List<DirectionsStep> steps) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      barrierColor: Colors.black26,
+      builder: (_) => TurnByTurnSheet(steps: steps),
+    );
+  }
+
   Future<void> _call112() async {
     _viewModel.closeSosMenu();
     final uri = Uri(scheme: 'tel', path: '112');
@@ -423,6 +443,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       );
       unawaited(_mapController.syncDroppedPin(_droppedPinPoint(state)));
       unawaited(_mapController.setTrafficVisible(state.showLiveTraffic));
+      // While tracking, the origin/route keep changing from the live GPS
+      // stream (see HomeMapViewModel._onTrackedPosition) rather than from
+      // an explicit screen action, so the line has to be kept in sync here
+      // reactively instead of imperatively like _startGoToHelp does.
+      if (state.goToHelpTracking) {
+        final origin = state.goToHelpOrigin;
+        final route = state.goToHelpRoute;
+        if (origin != null && route != null) {
+          unawaited(_mapController.renderRoute([origin, ...route.points]));
+        }
+      }
     }
 
     ref.listen(homeMapViewModelProvider, (previous, next) {
@@ -737,10 +768,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 expanded: state.goToHelpCardExpanded,
                 onToggleExpanded: _viewModel.toggleGoToHelpCard,
                 onCall112: _call112,
-                onStart: () => _showComingSoon('Start navigation'),
+                onStart: _startTracking,
                 onSendSosInstead: () => _showComingSoon('Send SOS instead'),
                 onVoiceDirections: () => _showComingSoon('Voice directions'),
                 onClose: _closeGoToHelp,
+                tracking: state.goToHelpTracking,
+                accuracyMeters: state.goToHelpAccuracyMeters,
+                onStop: _viewModel.stopGoToHelpTracking,
+                onViewSteps: () =>
+                    _viewGoToHelpSteps(state.goToHelpRoute!.steps),
               ),
             ),
           ],
