@@ -770,10 +770,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 onCall112: _call112,
                 onStart: _startTracking,
                 onSendSosInstead: () => _showComingSoon('Send SOS instead'),
-                onVoiceDirections: () => _showComingSoon('Voice directions'),
+                onVoiceDirections: _viewModel.toggleGoToHelpVoice,
                 onClose: _closeGoToHelp,
                 tracking: state.goToHelpTracking,
                 accuracyMeters: state.goToHelpAccuracyMeters,
+                voiceEnabled: state.goToHelpVoiceEnabled,
                 onStop: _viewModel.stopGoToHelpTracking,
                 onViewSteps: () =>
                     _viewGoToHelpSteps(state.goToHelpRoute!.steps),

@@ -25,6 +25,7 @@ class GoToHelpCard extends StatelessWidget {
     required this.onClose,
     this.tracking = false,
     this.accuracyMeters,
+    this.voiceEnabled = false,
     this.onStop,
     this.onViewSteps,
   });
@@ -48,6 +49,10 @@ class GoToHelpCard extends StatelessWidget {
   /// The live GPS fix's accuracy while [tracking], for the "Weak/Good GPS
   /// signal" line — null hides that line (e.g. before the first fix).
   final double? accuracyMeters;
+
+  /// Whether spoken turn-by-turn instructions are on — flips the voice
+  /// button's label between "on"/"off".
+  final bool voiceEnabled;
 
   final VoidCallback? onStop;
   final VoidCallback? onViewSteps;
@@ -260,7 +265,7 @@ class GoToHelpCard extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: AppButton(
-            label: '🎙️ Voice off',
+            label: voiceEnabled ? '🎙️ Voice on' : '🎙️ Voice off',
             variant: AppButtonVariant.neutral,
             onPressed: onVoiceDirections,
           ),
@@ -524,7 +529,9 @@ class GoToHelpCard extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: AppButton(
-            label: '🎙️ Voice directions off',
+            label: voiceEnabled
+                ? '🎙️ Voice directions on'
+                : '🎙️ Voice directions off',
             variant: AppButtonVariant.neutral,
             onPressed: onVoiceDirections,
           ),

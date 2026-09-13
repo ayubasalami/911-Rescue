@@ -1,4 +1,4 @@
-import 'dart:async' show StreamSubscription;
+import 'dart:async' show StreamSubscription, unawaited;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,6 +10,7 @@ import '../../../data/repositories/access_analysis_repository.dart';
 import '../../../data/repositories/facility_repository.dart';
 import '../../../data/repositories/location_repository.dart';
 import '../../../data/services/access_analysis_service.dart';
+import '../../../data/services/voice_directions_service.dart';
 
 const defaultMapCenter = GeoPoint(latitude: 6.5244, longitude: 3.3792);
 
@@ -77,6 +78,7 @@ class HomeMapState {
     this.goToHelpFollowsUser = false,
     this.goToHelpTracking = false,
     this.goToHelpAccuracyMeters,
+    this.goToHelpVoiceEnabled = false,
     this.errorMessage,
   });
 
@@ -148,6 +150,10 @@ class HomeMapState {
   /// signal" line — null when not tracking or before the first fix arrives.
   final double? goToHelpAccuracyMeters;
 
+  /// Whether spoken turn-by-turn instructions are on — matches the web
+  /// platform's "Voice directions" toggle.
+  final bool goToHelpVoiceEnabled;
+
   /// A one-shot message for the View to surface (e.g. via SnackBar), then
   /// clear with [HomeMapViewModel.clearErrorMessage] so it isn't shown
   /// again on the next rebuild.
@@ -180,6 +186,7 @@ class HomeMapState {
     bool? goToHelpFollowsUser,
     bool? goToHelpTracking,
     Object? goToHelpAccuracyMeters = _unset,
+    bool? goToHelpVoiceEnabled,
     Object? errorMessage = _unset,
   }) {
     return HomeMapState(
@@ -231,6 +238,7 @@ class HomeMapState {
       goToHelpAccuracyMeters: identical(goToHelpAccuracyMeters, _unset)
           ? this.goToHelpAccuracyMeters
           : goToHelpAccuracyMeters as double?,
+      goToHelpVoiceEnabled: goToHelpVoiceEnabled ?? this.goToHelpVoiceEnabled,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
@@ -249,6 +257,7 @@ class HomeMapState {
 class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   StreamSubscription<TrackedPosition>? _trackingSubscription;
   DateTime? _lastGoToHelpRouteFetch;
+  String? _lastSpokenInstruction;
 
   @override
   Future<HomeMapState> build() {
@@ -309,6 +318,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   void _cancelTracking() {
     _trackingSubscription?.cancel();
     _trackingSubscription = null;
+    _lastSpokenInstruction = null;
+    unawaited(ref.read(voiceDirectionsServiceProvider).stop());
   }
 
   void selectOrigin({
@@ -651,7 +662,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   /// one-shot fetch, and the route is periodically re-fetched from wherever
   /// the user actually is.
   Future<void> startGoToHelpTracking() async {
-    if (state.value?.goToHelpDestination == null) return;
+    final current = state.value;
+    if (current?.goToHelpDestination == null) return;
     _cancelTracking();
     _lastGoToHelpRouteFetch = null;
     _update((s) => s.copyWith(goToHelpTracking: true));
@@ -659,6 +671,11 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         .read(locationRepositoryProvider)
         .positionStream()
         .listen(_onTrackedPosition);
+
+    final route = current?.goToHelpRoute;
+    if (route != null && (current?.goToHelpVoiceEnabled ?? false)) {
+      _speakUpcomingInstruction(route, force: true);
+    }
   }
 
   /// Stops live tracking and reverts to the static route preview — the web
@@ -701,7 +718,43 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         longitude: destination.longitude,
       ),
     );
-    if (route != null) _update((s) => s.copyWith(goToHelpRoute: route));
+    if (route != null) {
+      _update((s) => s.copyWith(goToHelpRoute: route));
+      if (state.value?.goToHelpVoiceEnabled ?? false) {
+        _speakUpcomingInstruction(route);
+      }
+    }
+  }
+
+  /// Turns spoken turn-by-turn instructions on/off — the web platform's
+  /// "Voice directions" toggle. Enabling it mid-route immediately announces
+  /// the current next instruction, the same feedback a driver gets from
+  /// turning voice on partway through a real navigation app.
+  void toggleGoToHelpVoice() {
+    final enabling = !(state.value?.goToHelpVoiceEnabled ?? false);
+    _update((s) => s.copyWith(goToHelpVoiceEnabled: enabling));
+    if (!enabling) {
+      _lastSpokenInstruction = null;
+      unawaited(ref.read(voiceDirectionsServiceProvider).stop());
+      return;
+    }
+    final route = state.value?.goToHelpRoute;
+    if (route != null) _speakUpcomingInstruction(route, force: true);
+  }
+
+  /// Speaks [route]'s next instruction — but only when it's actually new,
+  /// since [_onTrackedPosition] calls this on every route refetch (every
+  /// ~10s while tracking) and re-announcing an unchanged instruction on
+  /// every refetch would be constant, useless chatter. [force] bypasses
+  /// that for the "just turned voice on" case, where re-stating the current
+  /// instruction is the whole point even if it hasn't changed.
+  void _speakUpcomingInstruction(DirectionsRoute route, {bool force = false}) {
+    if (route.steps.isEmpty) return;
+    final instruction = route.steps.first.instruction;
+    if (instruction.isEmpty) return;
+    if (!force && instruction == _lastSpokenInstruction) return;
+    _lastSpokenInstruction = instruction;
+    unawaited(ref.read(voiceDirectionsServiceProvider).speak(instruction));
   }
 }
 
