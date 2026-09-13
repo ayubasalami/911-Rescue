@@ -93,6 +93,13 @@ class MapAnnotationController {
   mapbox.PolygonAnnotationManager? _polygonManager;
   mapbox.PolylineAnnotationManager? _polylineManager;
 
+  /// Separate from [_polylineManager] deliberately — that one is deleted
+  /// and recreated on nearly every Go to Help update, but the Lagos
+  /// boundary is static and toggled independently; sharing a manager would
+  /// mean every route change wipes the boundary outline too.
+  mapbox.PolylineAnnotationManager? _boundaryManager;
+  List<GeoPoint>? _lastBoundary;
+
   List<Facility> _lastSourceFacilities = const [];
   FacilityCategory? _lastAppliedFilter;
   final Map<String, Facility> _annotationFacilities = {};
@@ -125,6 +132,9 @@ class MapAnnotationController {
     _originManager = await mapboxMap.annotations.createPointAnnotationManager();
 
     _polylineManager = await mapboxMap.annotations
+        .createPolylineAnnotationManager();
+
+    _boundaryManager = await mapboxMap.annotations
         .createPolylineAnnotationManager();
 
     await mapboxMap.location.updateSettings(
@@ -351,5 +361,39 @@ class MapAnnotationController {
   Future<void> clearIsochroneAndRoute() async {
     await _polygonManager?.deleteAll();
     await _polylineManager?.deleteAll();
+  }
+
+  /// Renders (or clears, when [ring] is null) the Lagos state boundary as
+  /// an outline — a plain [PolylineAnnotationOptions] rather than a filled
+  /// [PolygonAnnotationOptions], since a fill would obscure everything
+  /// inside it. Mapbox's simple annotation API has no dash-array support
+  /// (only `fill-outline-color` does, and that's a fixed 1px line with no
+  /// styling control), so this is a solid line rather than dashed.
+  Future<void> syncBoundary(List<GeoPoint>? ring) async {
+    final manager = _boundaryManager;
+    if (manager == null) return;
+    if (identical(ring, _lastBoundary)) return;
+    _lastBoundary = ring;
+
+    await manager.deleteAll();
+    if (ring == null || ring.isEmpty) return;
+
+    // Close the ring so the outline doesn't have a visible gap between the
+    // last and first point. Always appends rather than checking whether
+    // it's already closed — GeoPoint has no value equality, and a
+    // duplicate final point is harmless for a polyline.
+    final closed = [...ring, ring.first];
+    await manager.create(
+      mapbox.PolylineAnnotationOptions(
+        geometry: mapbox.LineString(
+          coordinates: [
+            for (final point in closed)
+              mapbox.Position(point.longitude, point.latitude),
+          ],
+        ),
+        lineColor: AppColors.boundary.toARGB32(),
+        lineWidth: 2,
+      ),
+    );
   }
 }

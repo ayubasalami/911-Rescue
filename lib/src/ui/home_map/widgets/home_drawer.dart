@@ -29,9 +29,9 @@ Future<void> _openLink(BuildContext context, String url) async {
 /// Analyzer defaults, account), reused as a slide-in drawer on mobile rather
 /// than a plain links menu — opened from the map's hamburger button.
 ///
-/// Search, "Lagos Boundary," "How to Use This Map," and "Data Sources &
-/// Credits" are UI-only for now (no backing data/logic exists yet); the
-/// facility-category filter, the Emergency Facilities and Live Traffic
+/// Search, "How to Use This Map," and "Data Sources & Credits" are UI-only
+/// for now (no backing data/logic exists yet); the facility-category
+/// filter, the Emergency Facilities, Live Traffic and Lagos Boundary
 /// layer toggles, the Accessibility Analyzer defaults, Clear Analysis, and
 /// every footer link are wired to real state/actions.
 class HomeDrawer extends ConsumerWidget {
@@ -125,8 +125,8 @@ class HomeDrawer extends ConsumerWidget {
                   notifier.toggleEmergencyFacilitiesLayer,
               showLiveTraffic: state?.showLiveTraffic ?? false,
               onToggleLiveTraffic: notifier.toggleLiveTrafficLayer,
-              onLagosBoundaryTap: () =>
-                  _comingSoon(context, 'Lagos Boundary layer'),
+              showLagosBoundary: state?.showLagosBoundary ?? true,
+              onToggleLagosBoundary: notifier.toggleLagosBoundaryLayer,
             ),
             const Divider(height: 1),
             _AnalyzerDefaultsSection(
@@ -281,7 +281,8 @@ class _MapLayersSection extends StatelessWidget {
     required this.onToggleEmergencyFacilities,
     required this.showLiveTraffic,
     required this.onToggleLiveTraffic,
-    required this.onLagosBoundaryTap,
+    required this.showLagosBoundary,
+    required this.onToggleLagosBoundary,
   });
 
   final FacilityCategory? selectedFilter;
@@ -290,7 +291,8 @@ class _MapLayersSection extends StatelessWidget {
   final VoidCallback onToggleEmergencyFacilities;
   final bool showLiveTraffic;
   final VoidCallback onToggleLiveTraffic;
-  final VoidCallback onLagosBoundaryTap;
+  final bool showLagosBoundary;
+  final VoidCallback onToggleLagosBoundary;
 
   @override
   Widget build(BuildContext context) {
@@ -336,8 +338,8 @@ class _MapLayersSection extends StatelessWidget {
           const SizedBox(height: 12),
           _LayerRow(
             label: 'Lagos Boundary',
-            value: true,
-            onChanged: (_) => onLagosBoundaryTap(),
+            value: showLagosBoundary,
+            onChanged: (_) => onToggleLagosBoundary(),
           ),
           _LayerRow(
             label: 'Emergency Facilities',

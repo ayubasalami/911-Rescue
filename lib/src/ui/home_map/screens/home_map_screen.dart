@@ -532,6 +532,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       );
       unawaited(_mapController.syncDroppedPin(_droppedPinPoint(state)));
       unawaited(_mapController.setTrafficVisible(state.showLiveTraffic));
+      unawaited(
+        _mapController.syncBoundary(
+          state.showLagosBoundary ? state.lagosBoundary : null,
+        ),
+      );
       // While tracking, the origin/route keep changing from the live GPS
       // stream (see HomeMapViewModel._onTrackedPosition) rather than from
       // an explicit screen action, so the line has to be kept in sync here

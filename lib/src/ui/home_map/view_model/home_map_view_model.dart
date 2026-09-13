@@ -67,6 +67,8 @@ class HomeMapState {
     this.showSosMenu = false,
     this.showEmergencyFacilities = true,
     this.showLiveTraffic = false,
+    this.showLagosBoundary = true,
+    this.lagosBoundary,
     this.analysisThresholdMinutes = kAccessAnalysisThresholdMinutes,
     this.originSelection,
     this.selectedFacility,
@@ -97,6 +99,17 @@ class HomeMapState {
 
   /// The drawer's/side-button's "Live Traffic" map layer toggle.
   final bool showLiveTraffic;
+
+  /// The drawer's "Lagos Boundary" map layer toggle — defaults on, matching
+  /// the web platform.
+  final bool showLagosBoundary;
+
+  /// The outer ring of the Lagos state boundary polygon, fetched once at
+  /// load (it's static data, ~14 KB — unlike facilities there's no reason
+  /// to gate this behind zoom or cache-refresh logic). Null until that
+  /// fetch completes or if it failed; [showLagosBoundary] being on with
+  /// this still null just means nothing renders yet.
+  final List<GeoPoint>? lagosBoundary;
 
   /// The Accessibility Analyzer's Max Time Threshold, set from the drawer.
   final int analysisThresholdMinutes;
@@ -181,6 +194,8 @@ class HomeMapState {
     bool? showSosMenu,
     bool? showEmergencyFacilities,
     bool? showLiveTraffic,
+    bool? showLagosBoundary,
+    Object? lagosBoundary = _unset,
     int? analysisThresholdMinutes,
     Object? originSelection = _unset,
     Object? selectedFacility = _unset,
@@ -221,6 +236,10 @@ class HomeMapState {
       showEmergencyFacilities:
           showEmergencyFacilities ?? this.showEmergencyFacilities,
       showLiveTraffic: showLiveTraffic ?? this.showLiveTraffic,
+      showLagosBoundary: showLagosBoundary ?? this.showLagosBoundary,
+      lagosBoundary: identical(lagosBoundary, _unset)
+          ? this.lagosBoundary
+          : lagosBoundary as List<GeoPoint>?,
       analysisThresholdMinutes:
           analysisThresholdMinutes ?? this.analysisThresholdMinutes,
       originSelection: identical(originSelection, _unset)
@@ -281,13 +300,22 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         .currentPosition();
     final center = locationResult.position ?? defaultMapCenter;
 
-    final facilitiesResult = await ref
-        .read(facilityRepositoryProvider)
-        .allFacilities();
+    final facilityRepository = ref.read(facilityRepositoryProvider);
+    final results = await (
+      facilityRepository.allFacilities(),
+      facilityRepository.boundary(),
+    ).wait;
+    final facilitiesResult = results.$1;
+    final boundaryResult = results.$2;
+
     final facilities = switch (facilitiesResult) {
       Ok(:final value) => value,
       Err() => const <Facility>[],
     };
+    // Silent on failure, unlike facilities — it's a decorative outline, not
+    // core to the map being usable, so it's not worth alarming the user
+    // over.
+    final boundary = boundaryResult.valueOrNull;
 
     final locationMessage =
         locationResult.status == LocationAccessStatus.granted
@@ -302,6 +330,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       facilities: facilities,
       center: center,
       locationStatus: locationResult.status,
+      lagosBoundary: boundary,
       // Location's own message takes priority when both fail — it's the
       // more fundamentally blocking of the two (no facilities is a broken
       // list; no location is a broken map).
@@ -442,6 +471,9 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
 
   void toggleLiveTrafficLayer() =>
       _update((s) => s.copyWith(showLiveTraffic: !s.showLiveTraffic));
+
+  void toggleLagosBoundaryLayer() =>
+      _update((s) => s.copyWith(showLagosBoundary: !s.showLagosBoundary));
 
   void setAnalysisThreshold(int minutes) =>
       _update((s) => s.copyWith(analysisThresholdMinutes: minutes));

@@ -183,6 +183,7 @@ class FacilityService {
   /// feature, one ring — not a `MultiPolygon`, so this doesn't handle that
   /// case.
   Future<Result<List<GeoPoint>>> fetchBoundary() {
+    if (isTestEnvironment) return Future.value(const Ok([]));
     return _api.get<List<GeoPoint>>(
       '/api/boundary',
       parse: (body) {

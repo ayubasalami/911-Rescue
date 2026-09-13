@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-
 abstract final class AppColors {
   static const primary = Color(0xFF0077FF);
   static const danger = Color(0xFFD9004C);
@@ -11,6 +10,10 @@ abstract final class AppColors {
   static const textPrimary = Color(0xFF121212);
   static const textSecondary = Color(0xFF666666);
   static const border = Color(0xFFE2E5E9);
+
+  /// The drawer's "Lagos Boundary" map layer outline — a distinct teal so
+  /// it doesn't read as a route (primary blue) or traffic (success green).
+  static const boundary = Color(0xFF06B6D4);
 }
 
 abstract final class AppRadii {
