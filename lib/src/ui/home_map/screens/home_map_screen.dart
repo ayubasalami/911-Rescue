@@ -220,6 +220,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   Future<void> _onFacilityTapped(mapbox.PointAnnotation annotation) async {
     final facility = _mapController.facilityForAnnotation(annotation.id);
     if (facility == null) return;
+    await _selectFacility(facility);
+  }
+
+  /// Flies to and selects [facility] — shared by tapping a facility marker
+  /// and tapping a search result in the drawer.
+  Future<void> _selectFacility(Facility facility) async {
     final point = GeoPoint(
       latitude: facility.latitude,
       longitude: facility.longitude,
@@ -578,6 +584,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       drawer: HomeDrawer(
         onUseCurrentLocation: _recenterOnUser,
         onClearAnalysis: _cancelAnalysis,
+        onSelectSearchResult: _selectFacility,
         searchFocusNode: _searchFocusNode,
       ),
       body: Stack(

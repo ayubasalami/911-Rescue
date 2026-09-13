@@ -1,12 +1,18 @@
+import 'dart:async' show Timer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
+import '../../../data/repositories/facility_repository.dart';
 import '../../core/widgets/app_button.dart';
+import '../../core/widgets/facility_category_glyph.dart';
 import '../view_model/home_map_view_model.dart';
+import 'map_legend.dart' show FacilityCategoryLegend;
 import 'transport_mode_button.dart';
 
 const _sectionHeaderStyle = TextStyle(
@@ -29,8 +35,8 @@ Future<void> _openLink(BuildContext context, String url) async {
 /// Analyzer defaults, account), reused as a slide-in drawer on mobile rather
 /// than a plain links menu — opened from the map's hamburger button.
 ///
-/// Search, "How to Use This Map," and "Data Sources & Credits" are UI-only
-/// for now (no backing data/logic exists yet); the facility-category
+/// "How to Use This Map" and "Data Sources & Credits" are UI-only for now
+/// (no backing data/logic exists yet); search, the facility-category
 /// filter, the Emergency Facilities, Live Traffic and Lagos Boundary
 /// layer toggles, the Accessibility Analyzer defaults, Clear Analysis, and
 /// every footer link are wired to real state/actions.
@@ -39,6 +45,7 @@ class HomeDrawer extends ConsumerWidget {
     super.key,
     required this.onUseCurrentLocation,
     required this.onClearAnalysis,
+    required this.onSelectSearchResult,
     this.searchFocusNode,
   });
 
@@ -50,6 +57,10 @@ class HomeDrawer extends ConsumerWidget {
   /// Reuses the same cancel-analysis flow as the map's trash-icon side
   /// button, for the same reason.
   final VoidCallback onClearAnalysis;
+
+  /// Flies to and selects a tapped search result — same reason as
+  /// [onUseCurrentLocation]: needs the screen's MapAnnotationController.
+  final ValueChanged<Facility> onSelectSearchResult;
 
   /// Owned by the screen so its side-button search icon can open the
   /// drawer and focus this field in one tap.
@@ -113,7 +124,10 @@ class HomeDrawer extends ConsumerWidget {
                 Scaffold.of(context).closeDrawer();
                 onUseCurrentLocation();
               },
-              onSearch: () => _comingSoon(context, 'Facility search'),
+              onSelectResult: (facility) {
+                Scaffold.of(context).closeDrawer();
+                onSelectSearchResult(facility);
+              },
               focusNode: searchFocusNode,
             ),
             const Divider(height: 1),
@@ -220,16 +234,81 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _SearchSection extends StatelessWidget {
+class _SearchSection extends ConsumerStatefulWidget {
   const _SearchSection({
     required this.onUseCurrentLocation,
-    required this.onSearch,
+    required this.onSelectResult,
     this.focusNode,
   });
 
   final VoidCallback onUseCurrentLocation;
-  final VoidCallback onSearch;
+  final ValueChanged<Facility> onSelectResult;
   final FocusNode? focusNode;
+
+  @override
+  ConsumerState<_SearchSection> createState() => _SearchSectionState();
+}
+
+class _SearchSectionState extends ConsumerState<_SearchSection> {
+  final _controller = TextEditingController();
+  Timer? _debounce;
+
+  /// Null: no search run yet (or the field was cleared). Non-null (even
+  /// empty, for "no results"): the last search's outcome.
+  List<Facility>? _results;
+  bool _loading = false;
+  bool _searchFailed = false;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String query) {
+    _debounce?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() {
+        _results = null;
+        _loading = false;
+        _searchFailed = false;
+      });
+      return;
+    }
+    // Debounced rather than searching on every keystroke — the field has
+    // no per-search rate limit, but firing a request per character is
+    // still wasteful chatter for something the user is still typing.
+    _debounce = Timer(const Duration(milliseconds: 400), () => _search(query));
+  }
+
+  Future<void> _search(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return;
+    setState(() {
+      _loading = true;
+      _searchFailed = false;
+    });
+    final result = await ref.read(facilityRepositoryProvider).search(trimmed);
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      switch (result) {
+        case Ok(:final value):
+          _results = value;
+        case Err():
+          _results = null;
+          _searchFailed = true;
+      }
+    });
+  }
+
+  void _selectResult(Facility facility) {
+    _debounce?.cancel();
+    _controller.clear();
+    setState(() => _results = null);
+    widget.onSelectResult(facility);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -241,8 +320,10 @@ class _SearchSection extends StatelessWidget {
           const Text('SEARCH FACILITY', style: _sectionHeaderStyle),
           const SizedBox(height: 8),
           TextField(
-            focusNode: focusNode,
-            onSubmitted: (_) => onSearch(),
+            controller: _controller,
+            focusNode: widget.focusNode,
+            onChanged: _onChanged,
+            onSubmitted: _search,
             decoration: InputDecoration(
               hintText: 'Facilities name or address',
               filled: true,
@@ -255,14 +336,98 @@ class _SearchSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppRadii.sm),
                 borderSide: const BorderSide(color: AppColors.border),
               ),
+              suffixIcon: _loading
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : null,
             ),
           ),
+          if (_searchFailed) ...[
+            const SizedBox(height: 6),
+            const Text(
+              'Could not search right now. Try again.',
+              style: TextStyle(color: AppColors.danger, fontSize: 12),
+            ),
+          ],
+          if (_results != null)
+            if (_results!.isEmpty)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'No facilities found.',
+                  style: TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 240),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: _results!.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final facility = _results![index];
+                      return InkWell(
+                        onTap: () => _selectResult(facility),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Row(
+                            children: [
+                              FacilityCategoryGlyph(
+                                category: facility.category,
+                                color: facility.category.legendColor,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      facility.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      facility.category.displayLabel,
+                                      style: const TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: AppButton(
               label: 'Use Current Location',
-              onPressed: onUseCurrentLocation,
+              onPressed: widget.onUseCurrentLocation,
               filled: false,
               icon: Icons.my_location,
             ),
