@@ -6,11 +6,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../data/models/emergency_profile.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
+import '../../../data/models/ping.dart';
+import '../../../data/repositories/location_repository.dart';
 import '../../../data/services/geocoding_service.dart';
+import '../../../data/services/ping_service.dart';
 import '../../core/widgets/app_button.dart';
+import '../view_model/emergency_profile_view_model.dart';
 import 'emergency_profile_sheet.dart';
 
 enum _HelpMode { ping, goToHelp }
@@ -50,6 +56,15 @@ extension on _HelpCategory {
     _HelpCategory.police => FacilityCategory.police,
     _HelpCategory.fire => FacilityCategory.fire,
     _HelpCategory.roadSafety => FacilityCategory.roadSafety,
+  };
+
+  /// `POST /api/ping`'s `agency` field — see [PingAgencyApi.apiValue] for
+  /// the exact strings the backend expects.
+  PingAgency get pingAgency => switch (this) {
+    _HelpCategory.hospital => PingAgency.health,
+    _HelpCategory.police => PingAgency.police,
+    _HelpCategory.fire => PingAgency.fire,
+    _HelpCategory.roadSafety => PingAgency.roadSafety,
   };
 }
 
@@ -135,6 +150,17 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
   int _secondsLeft = _maxRecordingSeconds;
   Timer? _recordingTimer;
 
+  /// The sole credential for this ping — set once `POST /api/ping` returns,
+  /// used for every follow-up call (tracking, address correction, voice
+  /// upload, cancel).
+  String? _publicId;
+  bool _pingCreating = false;
+  String? _pingError;
+  int _respondersAvailable = 0;
+  PingStatus? _status;
+  PingResponder? _responder;
+  Timer? _pollTimer;
+
   static const _maxRecordingSeconds = 30;
 
   @override
@@ -144,15 +170,10 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     if (initial == null) return;
     _pingCategory = initial;
     _addressLoading = widget.origin != null;
+    _pingCreating = widget.origin != null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      widget.onPingActiveChanged?.call(true);
-      final origin = widget.origin;
-      if (origin == null) {
-        setState(() => _addressError = 'Location unavailable');
-      } else {
-        unawaited(_loadAddress(origin));
-      }
+      _beginPing(initial, widget.origin);
     });
   }
 
@@ -160,6 +181,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
   void dispose() {
     _recordingTimer?.cancel();
     _recorder?.dispose();
+    _pollTimer?.cancel();
     _addressController.dispose();
     if (_pingCategory != null) widget.onPingActiveChanged?.call(false);
     super.dispose();
@@ -173,14 +195,29 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       _addressError = null;
       _addressLoading = widget.origin != null;
       _editingAddress = false;
+      _publicId = null;
+      _pingCreating = widget.origin != null;
+      _pingError = null;
+      _respondersAvailable = 0;
+      _status = null;
+      _responder = null;
+      _voiceSent = false;
     });
+    _beginPing(category, widget.origin);
+  }
+
+  void _beginPing(_HelpCategory category, GeoPoint? origin) {
     widget.onPingActiveChanged?.call(true);
-    final origin = widget.origin;
     if (origin == null) {
-      setState(() => _addressError = 'Location unavailable');
+      setState(() {
+        _addressError = 'Location unavailable';
+        _pingError = 'Location unavailable';
+        _pingCreating = false;
+      });
       return;
     }
     unawaited(_loadAddress(origin));
+    unawaited(_createPing(category, origin));
   }
 
   Future<void> _loadAddress(GeoPoint origin) async {
@@ -202,21 +239,123 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     }
   }
 
+  /// Raises the real ping. A dropped pin was placed deliberately, so it's
+  /// treated as a high-confidence point with a small nominal accuracy;
+  /// "Your Location" instead takes a fresh GPS fix here (rather than
+  /// trusting whatever [widget.origin] was last set to) so the accuracy
+  /// value sent is real, not stale — `POST /api/ping` treats accuracy as
+  /// meaningful, not decorative.
+  Future<void> _createPing(_HelpCategory category, GeoPoint origin) async {
+    var point = origin;
+    var accuracy = 5.0;
+    if (!widget.isPinnedLocation) {
+      final location = await ref
+          .read(locationRepositoryProvider)
+          .currentPosition();
+      if (location.position != null) {
+        point = location.position!;
+        accuracy = location.accuracy ?? 50;
+      } else {
+        accuracy = 50;
+      }
+    }
+    if (!mounted) return;
+
+    final profile = ref.read(emergencyProfileViewModelProvider).value;
+    final result = await ref
+        .read(pingServiceProvider)
+        .raisePing(
+          agency: category.pingAgency,
+          point: point,
+          accuracy: accuracy,
+          medicalProfile: _formatMedicalProfile(profile),
+        );
+    if (!mounted) return;
+
+    switch (result) {
+      case Ok(:final value):
+        setState(() {
+          _publicId = value.publicId;
+          _respondersAvailable = value.respondersAvailable;
+          _pingCreating = false;
+        });
+        _startPolling();
+      case Err(:final failure):
+        setState(() {
+          _pingError = failure.userMessage;
+          _pingCreating = false;
+        });
+    }
+  }
+
+  /// Blood group / conditions / allergies only — [EmergencyProfile]'s name
+  /// and next-of-kin fields aren't part of what responders need in the
+  /// field. Null when the user never filled one in, so `medical_profile`
+  /// is simply omitted from the request.
+  String? _formatMedicalProfile(EmergencyProfile? profile) {
+    if (profile == null || profile.isEmpty) return null;
+    final parts = [
+      if (profile.bloodGroup.isNotEmpty) 'Blood group: ${profile.bloodGroup}',
+      if (profile.conditions.isNotEmpty) 'Conditions: ${profile.conditions}',
+      if (profile.allergies.isNotEmpty) 'Allergies: ${profile.allergies}',
+    ];
+    return parts.isEmpty ? null : parts.join('. ');
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _poll());
+    unawaited(_poll());
+  }
+
+  Future<void> _poll() async {
+    final publicId = _publicId;
+    if (publicId == null) return;
+    final result = await ref.read(pingServiceProvider).trackPing(publicId);
+    if (!mounted) return;
+    switch (result) {
+      case Ok(:final value):
+        setState(() {
+          _status = value.incident.status;
+          _responder = value.responder;
+        });
+        if (value.incident.status.isClosed) {
+          _pollTimer?.cancel();
+          _pollTimer = null;
+        }
+      case Err():
+        // Transient — keep polling, the next tick may succeed.
+        break;
+    }
+  }
+
   void _startEditingAddress() {
     _addressController.text = _address ?? '';
     setState(() => _editingAddress = true);
   }
 
-  /// Applies the edited text as the new "Address sent" line — mocked like
-  /// the rest of this ping flow (no backend to actually send a correction
-  /// to), so this just updates what's displayed.
-  void _sendAddressCorrection() {
+  /// Sends the user's own corrected address — geocoding in Lagos is
+  /// unreliable, and the person standing there knows better.
+  Future<void> _sendAddressCorrection() async {
     final corrected = _addressController.text.trim();
     if (corrected.isEmpty) return;
     setState(() {
       _address = corrected;
       _editingAddress = false;
     });
+    final publicId = _publicId;
+    if (publicId == null) return;
+    final result = await ref
+        .read(pingServiceProvider)
+        .correctAddress(publicId, corrected);
+    if (!mounted) return;
+    if (result case Err(:final failure)) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(failure.userMessage)));
+      }
+    }
   }
 
   void _cancelAddressEdit() => setState(() => _editingAddress = false);
@@ -225,6 +364,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     _recordingTimer?.cancel();
     _recordingTimer = null;
     if (_isRecording) unawaited(_recorder?.stop());
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    final publicId = _publicId;
     widget.onPingActiveChanged?.call(false);
     setState(() {
       _pingCategory = null;
@@ -234,7 +376,16 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       _address = null;
       _addressError = null;
       _editingAddress = false;
+      _publicId = null;
+      _pingCreating = false;
+      _pingError = null;
+      _respondersAvailable = 0;
+      _status = null;
+      _responder = null;
     });
+    if (publicId != null) {
+      unawaited(ref.read(pingServiceProvider).cancelPing(publicId));
+    }
   }
 
   Future<void> _toggleRecording() =>
@@ -262,24 +413,46 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     });
   }
 
-  /// Stops the recorder and discards the file — there's no backend for this
-  /// mocked flow to send it to, so only the "sent" UI state matters.
+  /// Stops the recorder and uploads it — `POST /api/ping/{id}/voice`, max
+  /// 30s, rate-limited 10/min. Deletes the local file either way; nothing
+  /// keeps it around once it's sent (or once there's nowhere to send it).
   Future<void> _stopRecording() async {
     _recordingTimer?.cancel();
     _recordingTimer = null;
+    final seconds = _maxRecordingSeconds - _secondsLeft;
     final path = await _recorder?.stop();
-    if (path != null) {
+    if (!mounted) return;
+    setState(() => _isRecording = false);
+    if (path == null) return;
+
+    final publicId = _publicId;
+    try {
+      if (publicId == null) return;
+      final bytes = await File(path).readAsBytes();
+      final result = await ref
+          .read(pingServiceProvider)
+          .uploadVoice(
+            publicId,
+            bytes: bytes,
+            filename: path.split(Platform.pathSeparator).last,
+            seconds: seconds > 0 ? seconds : null,
+          );
+      if (!mounted) return;
+      switch (result) {
+        case Ok():
+          setState(() => _voiceSent = true);
+        case Err(:final failure):
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(failure.userMessage)));
+      }
+    } finally {
       try {
         await File(path).delete();
       } catch (_) {
-        // Nothing to send this to anyway — a leftover temp file is harmless.
+        // Leftover temp file is harmless either way.
       }
     }
-    if (!mounted) return;
-    setState(() {
-      _isRecording = false;
-      _voiceSent = true;
-    });
   }
 
   Future<void> _call112() async {
@@ -509,6 +682,49 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     );
   }
 
+  String _statusHeadline(_HelpCategory category) {
+    if (_pingError != null) return 'Could not send ping';
+    if (_pingCreating) return 'Sending your ping…';
+    if (_respondersAvailable == 0) return 'No responders available';
+    return switch (_status) {
+      null || PingStatus.pending => 'Finding a responder…',
+      PingStatus.accepted => 'A responder is on the way',
+      PingStatus.enRoute => 'Responder en route',
+      PingStatus.arrived => 'Responder has arrived',
+      PingStatus.resolved => 'Marked resolved',
+      PingStatus.cancelled => 'Ping cancelled',
+      PingStatus.expired => 'Ping expired',
+    };
+  }
+
+  String _statusBody(_HelpCategory category) {
+    if (_pingError != null) return _pingError!;
+    if (_pingCreating) return 'Reaching out to nearby ${category.agencyLabel}…';
+    if (_respondersAvailable == 0) {
+      return 'Nobody is on duty for ${category.agencyLabel} right now. '
+          'Please call 112 immediately.';
+    }
+    switch (_status) {
+      case PingStatus.resolved:
+        return 'This ping has been marked resolved.';
+      case PingStatus.expired:
+        return 'This ping expired with no response. Please call 112.';
+      case PingStatus.cancelled:
+        return 'This ping was cancelled.';
+      default:
+        break;
+    }
+    final responder = _responder;
+    if (responder != null) {
+      final station = responder.stationName;
+      final phone = responder.phone;
+      return '${responder.fullName}${station != null ? ' · $station' : ''} '
+          'is responding.${phone != null ? ' Call $phone if needed.' : ''}';
+    }
+    return 'Your location has been sent to nearby ${category.agencyLabel} on duty. '
+        'If nobody answers shortly, call 112.';
+  }
+
   Widget _buildPingPendingView(BuildContext context) {
     final category = _pingCategory!;
     if (!_pingCardExpanded) return _buildPingMinimizedView(category);
@@ -519,10 +735,10 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       children: [
         Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Text(
-                'Finding a responder…',
-                style: TextStyle(
+                _statusHeadline(category),
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: AppColors.danger,
@@ -550,10 +766,27 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
         ),
         const SizedBox(height: 6),
         Text(
-          'Your location has been sent to nearby ${category.agencyLabel} on duty. '
-          'If nobody answers shortly, call 112.',
+          _statusBody(category),
           style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
         ),
+        if (_pingError != null) ...[
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: AppButton(
+              label: 'Retry',
+              icon: Icons.refresh,
+              onPressed: () {
+                setState(() {
+                  _pingError = null;
+                  _pingCreating = widget.origin != null;
+                });
+                final origin = widget.origin;
+                if (origin != null) unawaited(_createPing(category, origin));
+              },
+            ),
+          ),
+        ],
         const SizedBox(height: 10),
         RichText(
           text: TextSpan(
@@ -659,7 +892,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
               variant: _isRecording
                   ? AppButtonVariant.neutral
                   : AppButtonVariant.primary,
-              onPressed: _toggleRecording,
+              onPressed: (_isRecording || _publicId != null)
+                  ? _toggleRecording
+                  : null,
             ),
           ),
           const SizedBox(height: 6),
@@ -704,21 +939,21 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       borderRadius: BorderRadius.circular(AppRadii.md),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Finding a responder…',
-                  style: TextStyle(
+                  _statusHeadline(category),
+                  style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: AppColors.danger,
                   ),
                 ),
-                SizedBox(height: 2),
-                Text(
+                const SizedBox(height: 2),
+                const Text(
                   'Tap for details',
                   style: TextStyle(
                     fontSize: 12,

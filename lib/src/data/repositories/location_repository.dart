@@ -15,14 +15,21 @@ enum LocationAccessStatus {
 }
 
 class LocationResult {
-  const LocationResult.granted(GeoPoint point)
+  const LocationResult.granted(GeoPoint point, {this.accuracy})
     : status = LocationAccessStatus.granted,
       position = point;
 
-  const LocationResult.unavailable(this.status) : position = null;
+  const LocationResult.unavailable(this.status)
+    : position = null,
+      accuracy = null;
 
   final LocationAccessStatus status;
   final GeoPoint? position;
+
+  /// GPS accuracy in metres, when [position] came from a real fix —
+  /// required by `POST /api/ping` ("accuracy is not decoration... a 200m
+  /// fix drawn as precise is actively misleading").
+  final double? accuracy;
 }
 
 final locationRepositoryProvider = Provider<LocationRepository>((ref) {
@@ -58,6 +65,7 @@ class LocationRepository {
       final position = await _service.getCurrentPosition();
       return LocationResult.granted(
         GeoPoint(latitude: position.latitude, longitude: position.longitude),
+        accuracy: position.accuracy,
       );
     } on TimeoutException {
       return const LocationResult.unavailable(LocationAccessStatus.timedOut);
