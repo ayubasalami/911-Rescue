@@ -19,7 +19,6 @@ class Facility {
     required this.longitude,
     this.address,
     this.phone,
-    this.catchmentPopulation,
   });
 
   final String id;
@@ -33,9 +32,4 @@ class Facility {
   /// not an address (see `FacilityService`).
   final String? address;
   final String? phone;
-
-  /// Not provided by the API — always null until a real census dataset
-  /// exists. The Accessibility Analyzer's POPULATION stat treats a missing
-  /// value as 0 rather than omitting it (see `AccessAnalysisRepository`).
-  final int? catchmentPopulation;
 }

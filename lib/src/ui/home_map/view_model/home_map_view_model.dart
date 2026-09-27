@@ -586,17 +586,18 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     GeoPoint origin,
     GeoPoint destination,
   ) async {
-    try {
-      return await ref
-          .read(accessAnalysisServiceProvider)
-          .fetchRoute(
-            origin: origin,
-            destination: destination,
-            mode: state.value?.selectedTransportMode ?? TransportMode.driving,
-          );
-    } catch (error) {
-      _setError('Could not load route: $error');
-      return null;
+    switch (await ref
+        .read(accessAnalysisServiceProvider)
+        .fetchRoute(
+          origin: origin,
+          destination: destination,
+          mode: state.value?.selectedTransportMode ?? TransportMode.driving,
+        )) {
+      case Ok(:final value):
+        return value;
+      case Err(:final failure):
+        _setError(failure.userMessage);
+        return null;
     }
   }
 

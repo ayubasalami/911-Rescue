@@ -8,12 +8,27 @@ enum TransportMode { driving, walking, motorbike, cycling }
 
 extension TransportModeRouting on TransportMode {
   /// Mapbox has no motorcycle profile, so motorbike reuses driving as the
-  /// closest available approximation.
+  /// closest available approximation. Only used by [AccessAnalysisService]'s
+  /// still-direct-to-Mapbox Matrix API calls now — /api/directions and
+  /// /api/isochrones use [backendMode] instead.
   String get mapboxProfile => switch (this) {
     TransportMode.driving => 'driving-traffic',
     TransportMode.walking => 'walking',
     TransportMode.cycling => 'cycling',
     TransportMode.motorbike => 'driving',
+  };
+
+  /// The 911 Rescue backend's `mode` query parameter for /api/directions
+  /// and /api/isochrones. Distinct from [mapboxProfile]: the backend has a
+  /// real motorcycle profile ("biking"), and — per the API docs, called
+  /// out explicitly as an easy mistake — "biking" means motorcycle/okada
+  /// while "cycling" means a pedal bicycle, the opposite of what the names
+  /// might suggest at a glance.
+  String get backendMode => switch (this) {
+    TransportMode.driving => 'driving',
+    TransportMode.walking => 'walking',
+    TransportMode.cycling => 'cycling',
+    TransportMode.motorbike => 'biking',
   };
 
   String get label => switch (this) {
@@ -67,10 +82,19 @@ class TimeBand {
 }
 
 class IsochroneRing {
-  const IsochroneRing({required this.minutes, required this.points});
+  const IsochroneRing({
+    required this.minutes,
+    required this.points,
+    this.population,
+  });
 
   final int minutes;
   final List<GeoPoint> points;
+
+  /// Reachable population within this ring, from `/api/isochrones`'
+  /// `properties.population` — null when the backend reports "N/A" (seen
+  /// live for the smaller bands, presumably below its data's resolution).
+  final int? population;
 }
 
 class DirectionsStep {

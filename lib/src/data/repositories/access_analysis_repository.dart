@@ -57,16 +57,30 @@ class AccessAnalysisRepository {
         GeoPoint(latitude: facility.latitude, longitude: facility.longitude),
     ];
 
-    final results = await Future.wait([
+    final (isochroneResult, durationsResult) = await (
       _service.fetchIsochrone(origin: origin, mode: mode),
       _service.fetchDurations(
         origin: origin,
         destinations: destinations,
         mode: mode,
       ),
-    ]);
-    final isochroneRings = results[0] as List<IsochroneRing>;
-    final durations = results[1] as List<Duration?>;
+    ).wait;
+
+    final List<IsochroneRing> isochroneRings;
+    switch (isochroneResult) {
+      case Ok(:final value):
+        isochroneRings = value;
+      case Err(:final failure):
+        return Err(failure);
+    }
+
+    final List<Duration?> durations;
+    switch (durationsResult) {
+      case Ok(:final value):
+        durations = value;
+      case Err(:final failure):
+        return Err(failure);
+    }
 
     final reachable = <ReachableFacility>[];
     ReachableFacility? closest;
@@ -95,12 +109,19 @@ class AccessAnalysisRepository {
       entries.sort((a, b) => a.eta.compareTo(b.eta));
     }
 
-    final population = reachable.isEmpty
-        ? null
-        : reachable.fold<int>(
-            0,
-            (sum, entry) => sum + (entry.facility.catchmentPopulation ?? 0),
-          );
+    // Real reachable-population data from the backend's isochrones (no
+    // facility carries a real census figure of its own) — the band with
+    // the largest `minutes` that still fits within [thresholdMinutes],
+    // i.e. the closest coverage to what was actually asked for without
+    // exceeding it.
+    final population = isochroneRings
+        .where((ring) => ring.minutes <= thresholdMinutes)
+        .fold<IsochroneRing?>(
+          null,
+          (best, ring) =>
+              best == null || ring.minutes > best.minutes ? ring : best,
+        )
+        ?.population;
 
     return Ok(
       AccessAnalysisResult(
