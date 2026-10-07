@@ -373,14 +373,57 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   void _openTriageChat() {
     showDialog<void>(
       context: context,
-      builder: (_) => Dialog(
+      builder: (dialogContext) => Dialog(
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 80),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadii.lg),
         ),
-        child: const TriageChatSheet(),
+        child: TriageChatSheet(
+          onSendPing: (category) {
+            Navigator.of(dialogContext).pop();
+            unawaited(_confirmTriageHandoff(category, asPing: true));
+          },
+          onGoToHelp: (category) {
+            Navigator.of(dialogContext).pop();
+            unawaited(_confirmTriageHandoff(category, asPing: false));
+          },
+          onCall112: () {
+            Navigator.of(dialogContext).pop();
+            unawaited(_call112());
+          },
+        ),
       ),
     );
+  }
+
+  /// Triage's "Send Ping"/"Go to Help" handoff. Unlike Go to Help's "Send
+  /// SOS instead" (which reuses whatever origin Go to Help is already
+  /// using), Triage is opened from the SOS menu with no origin selected
+  /// yet — so this fetches a fresh live position first, the same one
+  /// tapping the location button would.
+  Future<void> _confirmTriageHandoff(
+    FacilityCategory category, {
+    required bool asPing,
+  }) async {
+    final origin = await _viewModel.recenterOnUser();
+    if (!mounted || origin == null) return;
+
+    if (!asPing) {
+      await _startGoToHelp(category);
+      return;
+    }
+
+    _viewModel.openGetHelpFast();
+    setState(() => _pendingSosCategory = category);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _pendingSosCategory = null);
+    });
+
+    await _mapController.flyTo(origin);
+    if (!mounted) return;
+    final anchor = await _mapController.pixelForCoordinate(origin);
+    if (!mounted) return;
+    _popupAnchor.value = anchor;
   }
 
   void _openFacilitySheet(Facility facility) {

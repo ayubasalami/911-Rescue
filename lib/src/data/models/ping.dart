@@ -1,8 +1,11 @@
+import 'facility.dart';
 import 'geo_point.dart';
 
 /// One of the four values `POST /api/ping`'s `agency` field accepts —
 /// matches the backend's exact spelling, not the app's own
-/// [FacilityCategory] grouping.
+/// [FacilityCategory] grouping. `POST /api/triage_symptoms` returns the
+/// same four strings in its own `agency` field, so this is shared between
+/// Ping for Help and Triage rather than each parsing it separately.
 enum PingAgency { health, police, fire, roadSafety }
 
 extension PingAgencyApi on PingAgency {
@@ -12,6 +15,24 @@ extension PingAgencyApi on PingAgency {
     PingAgency.police => 'Police',
     PingAgency.fire => 'Fire & Emergency',
     PingAgency.roadSafety => 'Road Safety',
+  };
+
+  /// The app's own coarser facility grouping — used to route a triage
+  /// result or a raised ping into the existing facility search/Go to Help
+  /// machinery, both of which key off [FacilityCategory].
+  FacilityCategory get facilityCategory => switch (this) {
+    PingAgency.health => FacilityCategory.health,
+    PingAgency.police => FacilityCategory.police,
+    PingAgency.fire => FacilityCategory.fire,
+    PingAgency.roadSafety => FacilityCategory.roadSafety,
+  };
+
+  static PingAgency? fromApi(String value) => switch (value) {
+    'Health Facilities' => PingAgency.health,
+    'Police' => PingAgency.police,
+    'Fire & Emergency' => PingAgency.fire,
+    'Road Safety' => PingAgency.roadSafety,
+    _ => null,
   };
 }
 

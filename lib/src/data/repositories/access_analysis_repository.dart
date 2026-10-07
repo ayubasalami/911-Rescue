@@ -24,13 +24,22 @@ class AccessAnalysisRepository {
   final AccessAnalysisService _service;
   final FacilityRepository _facilityRepository;
 
-  /// Mapbox's Matrix API caps coordinates per request to 10 for
-  /// driving-traffic and 25 for other profiles. `/api/hospitals` returns
-  /// every Lagos facility (~2,900) with no geographic filter, so this has
-  /// to pick a bounded nearest subset itself before ever calling the
-  /// Matrix API — sending all of them would just fail the request.
-  static const _drivingTrafficMatrixCap = 10;
-  static const _otherProfileMatrixCap = 25;
+  /// Mapbox's Matrix API caps *total* coordinates per request — origin
+  /// included — to 10 for driving-traffic and 25 for other profiles.
+  /// `/api/hospitals` returns every Lagos facility (~2,900) with no
+  /// geographic filter, so this has to pick a bounded nearest subset
+  /// itself before ever calling the Matrix API — sending all of them
+  /// would just fail the request.
+  ///
+  /// Confirmed live: using these numbers directly as the *destination*
+  /// limit and then prepending the origin on top (see
+  /// `AccessAnalysisService.fetchDurations`) pushed driving-traffic to 11
+  /// total coordinates and got a real 422 back ("maximum number of
+  /// coordinates is 10") — Analyze Access failed every time as a result.
+  /// Both limits are one less than Mapbox's own cap, to leave room for
+  /// the origin as coordinate 0.
+  static const _drivingTrafficMatrixCap = 10 - 1;
+  static const _otherProfileMatrixCap = 25 - 1;
 
   Future<Result<AccessAnalysisResult>> analyze({
     required GeoPoint origin,
