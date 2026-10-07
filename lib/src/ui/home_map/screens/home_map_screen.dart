@@ -201,11 +201,19 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     unawaited(_selectDroppedPin(point));
   }
 
+  /// A Go to Help route is currently drawn and its card showing — tapping
+  /// the map or another facility still selects as usual (which exits this
+  /// route, same as before), but shouldn't fly the camera away from the
+  /// route overview it was just framed into.
+  bool get _goToHelpActive =>
+      ref.read(homeMapViewModelProvider).value?.goToHelpRoute != null;
+
   /// Centers the camera on [point] before anchoring the popup there, so it
   /// always has room to render fully inside the map area and never ends up
-  /// stuck behind the app bar.
+  /// stuck behind the app bar — skipped while [_goToHelpActive], so the
+  /// camera stays put instead of yanking away from the route overview.
   Future<void> _selectDroppedPin(GeoPoint point) async {
-    await _mapController.flyTo(point);
+    if (!_goToHelpActive) await _mapController.flyTo(point);
     if (!mounted) return;
     final anchor = await _mapController.pixelForCoordinate(point);
     if (!mounted) return;
@@ -224,13 +232,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   }
 
   /// Flies to and selects [facility] — shared by tapping a facility marker
-  /// and tapping a search result in the drawer.
+  /// and tapping a search result in the drawer. Skips the fly-to while
+  /// [_goToHelpActive], same reasoning as [_selectDroppedPin].
   Future<void> _selectFacility(Facility facility) async {
     final point = GeoPoint(
       latitude: facility.latitude,
       longitude: facility.longitude,
     );
-    await _mapController.flyTo(point);
+    if (!_goToHelpActive) await _mapController.flyTo(point);
     if (!mounted) return;
     final anchor = await _mapController.pixelForCoordinate(point);
     if (!mounted) return;
@@ -453,9 +462,44 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     );
   }
 
-  Future<void> _mapRouteTo(GeoPoint origin, GeoPoint destination) async {
-    final route = await _viewModel.fetchRoute(origin, destination);
-    if (route != null) await _mapController.renderRoute(route.points);
+  /// "Map Route" on a facility in the Access Analysis sheet — routes to it
+  /// the same way Go to Help does: same card, same loading overlay, same
+  /// map line. The sheet itself is closed synchronously by the caller
+  /// before this starts, so [HomeMapState.goToHelpLoading]'s
+  /// [CalculatingRouteOverlay] is what the user sees while the route is in
+  /// flight.
+  Future<void> _startGoToHelpToFacility(Facility facility) async {
+    final origin = await _viewModel.resolveRouteOrigin();
+    if (!mounted || origin == null) return;
+    final followsUser =
+        ref.read(homeMapViewModelProvider).value?.activeAnalysisFollowsUser ??
+        false;
+
+    // The analysis's isochrone overlay is still on the map at this point —
+    // clear it so it doesn't sit underneath/obscure the route once drawn.
+    await _mapController.clearIsochroneAndRoute();
+    if (!mounted) return;
+
+    await _viewModel.startGoToHelpToFacility(
+      facility,
+      origin: origin,
+      followsUser: followsUser,
+    );
+    final state = ref.read(homeMapViewModelProvider).value;
+    final resolvedOrigin = state?.goToHelpOrigin;
+    final route = state?.goToHelpRoute;
+    if (!mounted || resolvedOrigin == null || route == null) return;
+    await _mapController.renderRoute([resolvedOrigin, ...route.points]);
+    if (!mounted) return;
+    // Bound on the exact origin + destination, not just the route line's
+    // own points — Mapbox/OSRM snap the route's first point to the nearest
+    // road, which can sit a little away from the actual pin, so fitting on
+    // route.points alone can clip it out of view.
+    await _mapController.flyToBounds([
+      resolvedOrigin,
+      ...route.points,
+      GeoPoint(latitude: facility.latitude, longitude: facility.longitude),
+    ]);
   }
 
   Future<void> _getDirectionsTo(GeoPoint origin, GeoPoint destination) async {
@@ -512,9 +556,23 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     if (rings != null) await _mapController.renderIsochrone(rings);
   }
 
-  Future<void> _cancelAnalysis() async {
+  /// The sidebar/floating "clear" button — tears down whatever's currently
+  /// active (analysis, Go to Help, a selected facility or dropped pin, the
+  /// SOS menu) and recenters the map on the user's live location, rather
+  /// than just clearing the Accessibility Analyzer the way this used to.
+  /// Doesn't touch a real in-flight ping: closing "Get Help Fast" here only
+  /// hides its card, the same as backing out of it any other way — only
+  /// its own "Cancel ping" button actually cancels one server-side.
+  Future<void> _clearActiveFeature() async {
+    _viewModel.clearPopups();
     await _viewModel.cancelAnalysis();
+    _viewModel.closeSosMenu();
+    _popupAnchor.value = null;
     await _mapController.clearIsochroneAndRoute();
+
+    final point = await _viewModel.currentUserLocation();
+    if (point == null || !mounted) return;
+    await _mapController.flyTo(point);
   }
 
   /// The facility list to actually render — empty when the drawer's
@@ -626,7 +684,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       key: _scaffoldKey,
       drawer: HomeDrawer(
         onUseCurrentLocation: _recenterOnUser,
-        onClearAnalysis: _cancelAnalysis,
+        onClearMap: _clearActiveFeature,
         onSelectSearchResult: _selectFacility,
         searchFocusNode: _searchFocusNode,
       ),
@@ -680,15 +738,18 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             right: 16,
             child: const HomeMapHeader(),
           ),
-          Positioned(
-            top: 58 + topInset,
-            left: 0,
-            right: 0,
-            child: FacilityFilterRow(
-              selected: state?.selectedFilter,
-              onSelected: _viewModel.selectFilter,
+          // Hidden while a Go to Help route is active — the transport mode
+          // bar takes over this same top slot instead (see below).
+          if (state?.goToHelpRoute == null)
+            Positioned(
+              top: 58 + topInset,
+              left: 0,
+              right: 0,
+              child: FacilityFilterRow(
+                selected: state?.selectedFilter,
+                onSelected: _viewModel.selectFilter,
+              ),
             ),
-          ),
           ValueListenableBuilder<double>(
             valueListenable: _cameraZoom,
             builder: (context, zoom, _) {
@@ -735,7 +796,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 MapControlButton(
                   icon: Icons.delete_outline,
                   iconColor: AppColors.danger,
-                  onTap: _cancelAnalysis,
+                  onTap: _clearActiveFeature,
                 ),
                 const SizedBox(height: 8),
                 MapControlButton(
@@ -894,7 +955,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           if (state?.goToHelpRoute != null &&
               state?.goToHelpDestination != null) ...[
             Positioned(
-              top: 108 + topInset,
+              // The facility filter tabs' slot — hidden above while a
+              // route is active, so the mode bar takes it over instead.
+              top: 58 + topInset,
               left: 16,
               right: 16,
               child: Center(
@@ -923,25 +986,30 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               left: 16,
               right: 16,
               bottom: 16 + bottomInset,
-              child: GoToHelpCard(
-                destination: state.goToHelpDestination!,
-                route: state.goToHelpRoute!,
-                expanded: state.goToHelpCardExpanded,
-                onToggleExpanded: _viewModel.toggleGoToHelpCard,
-                onCall112: _call112,
-                onStart: _startTracking,
-                onSendSosInstead: _viewModel.openGoToHelpSosConfirm,
-                onVoiceDirections: _viewModel.toggleGoToHelpVoice,
-                onClose: _closeGoToHelp,
-                tracking: state.goToHelpTracking,
-                accuracyMeters: state.goToHelpAccuracyMeters,
-                voiceEnabled: state.goToHelpVoiceEnabled,
-                onStop: _viewModel.stopGoToHelpTracking,
-                onViewSteps: () =>
-                    _viewGoToHelpSteps(state.goToHelpRoute!.steps),
-                sosConfirming: state.goToHelpSosConfirming,
-                onCancelSosConfirm: _viewModel.closeGoToHelpSosConfirm,
-                onConfirmSos: _confirmSosInstead,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: GoToHelpCard(
+                    destination: state.goToHelpDestination!,
+                    route: state.goToHelpRoute!,
+                    expanded: state.goToHelpCardExpanded,
+                    onToggleExpanded: _viewModel.toggleGoToHelpCard,
+                    onCall112: _call112,
+                    onStart: _startTracking,
+                    onSendSosInstead: _viewModel.openGoToHelpSosConfirm,
+                    onVoiceDirections: _viewModel.toggleGoToHelpVoice,
+                    onClose: _closeGoToHelp,
+                    tracking: state.goToHelpTracking,
+                    accuracyMeters: state.goToHelpAccuracyMeters,
+                    voiceEnabled: state.goToHelpVoiceEnabled,
+                    onStop: _viewModel.stopGoToHelpTracking,
+                    onViewSteps: () =>
+                        _viewGoToHelpSteps(state.goToHelpRoute!.steps),
+                    sosConfirming: state.goToHelpSosConfirming,
+                    onCancelSosConfirm: _viewModel.closeGoToHelpSosConfirm,
+                    onConfirmSos: _confirmSosInstead,
+                  ),
+                ),
               ),
             ),
           ],
@@ -951,9 +1019,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             Positioned.fill(
               child: AccessAnalysisSheet(
                 result: state!.activeAnalysis!,
-                onMapRoute: (destination) async {
-                  final origin = await _viewModel.resolveRouteOrigin();
-                  if (origin != null) await _mapRouteTo(origin, destination);
+                onMapRoute: (facility) {
+                  _viewModel.dismissAnalysisSheet();
+                  unawaited(_startGoToHelpToFacility(facility));
                 },
                 onDirections: (destination) async {
                   final origin = await _viewModel.resolveRouteOrigin();

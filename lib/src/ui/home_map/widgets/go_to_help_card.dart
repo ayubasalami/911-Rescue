@@ -79,7 +79,7 @@ class GoToHelpCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppRadii.md),
           border: Border.all(color: AppColors.primary, width: 1.5),
         ),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         child: tracking
             ? (expanded ? _buildTrackingExpanded() : _buildTrackingMinimized())
             : (expanded ? _buildExpanded() : _buildMinimized()),
@@ -337,12 +337,12 @@ class GoToHelpCard extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         if (sosConfirming)
           _buildSosConfirm()
         else ...[
           Row(
-            spacing: 8,
+            spacing: 6,
             children: [
               Expanded(
                 child: AppButton(
@@ -351,7 +351,7 @@ class GoToHelpCard extends StatelessWidget {
                   onPressed: onCall112,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
-                    vertical: 14,
+                    vertical: 12,
                   ),
                   fontSize: 13,
                 ),
@@ -363,7 +363,37 @@ class GoToHelpCard extends StatelessWidget {
                   onPressed: onStop,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
-                    vertical: 14,
+                    vertical: 12,
+                  ),
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            spacing: 6,
+            children: [
+              Expanded(
+                child: AppButton(
+                  label: '☰ Steps',
+                  variant: AppButtonVariant.neutral,
+                  onPressed: onViewSteps,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 12,
+                  ),
+                  fontSize: 13,
+                ),
+              ),
+              Expanded(
+                child: AppButton(
+                  label: voiceEnabled ? '🎙️ Voice on' : '🎙️ Voice off',
+                  variant: AppButtonVariant.neutral,
+                  onPressed: onVoiceDirections,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 12,
                   ),
                   fontSize: 13,
                 ),
@@ -374,28 +404,12 @@ class GoToHelpCard extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: AppButton(
-              label: '☰ View turn-by-turn steps',
-              variant: AppButtonVariant.neutral,
-              onPressed: onViewSteps,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: AppButton(
-              label: voiceEnabled ? '🎙️ Voice on' : '🎙️ Voice off',
-              variant: AppButtonVariant.neutral,
-              onPressed: onVoiceDirections,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: AppButton(
               label: '🆘 Send SOS instead',
               variant: AppButtonVariant.danger,
               filled: false,
               onPressed: onSendSosInstead,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              fontSize: 13,
             ),
           ),
         ],
@@ -536,7 +550,7 @@ class GoToHelpCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             InkWell(
               onTap: onToggleExpanded,
               borderRadius: BorderRadius.circular(AppRadii.sm),
@@ -554,13 +568,26 @@ class GoToHelpCard extends StatelessWidget {
                 ),
               ),
             ),
+            const SizedBox(width: 6),
+            InkWell(
+              onTap: onClose,
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+              child: const Padding(
+                padding: EdgeInsets.all(6),
+                child: Icon(
+                  Icons.close,
+                  size: 18,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 8),
         const Divider(height: 1),
         const SizedBox(height: 8),
         ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 160),
+          constraints: const BoxConstraints(maxHeight: 140),
           child: ListView.separated(
             shrinkWrap: true,
             itemCount: route.steps.length,
@@ -614,12 +641,12 @@ class GoToHelpCard extends StatelessWidget {
             },
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         if (sosConfirming)
           _buildSosConfirm()
         else ...[
           Row(
-            spacing: 8,
+            spacing: 6,
             children: [
               Expanded(
                 child: AppButton(
@@ -627,7 +654,7 @@ class GoToHelpCard extends StatelessWidget {
                   onPressed: onStart,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
-                    vertical: 14,
+                    vertical: 12,
                   ),
                   fontSize: 13,
                 ),
@@ -640,7 +667,7 @@ class GoToHelpCard extends StatelessWidget {
                   onPressed: onSendSosInstead,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
-                    vertical: 14,
+                    vertical: 12,
                   ),
                   fontSize: 13,
                 ),
@@ -648,34 +675,36 @@ class GoToHelpCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: AppButton(
-              label: voiceEnabled
-                  ? '🎙️ Voice directions on'
-                  : '🎙️ Voice directions off',
-              variant: AppButtonVariant.neutral,
-              onPressed: onVoiceDirections,
-            ),
-          ),
         ],
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: AppButton(
-            label: '📞 Call 112',
-            variant: AppButtonVariant.danger,
-            onPressed: onCall112,
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: AppButton(
-            label: 'Close',
-            variant: AppButtonVariant.neutral,
-            onPressed: onClose,
-          ),
+        Row(
+          spacing: 6,
+          children: [
+            if (!sosConfirming)
+              Expanded(
+                child: AppButton(
+                  label: voiceEnabled ? '🎙️ Voice on' : '🎙️ Voice off',
+                  variant: AppButtonVariant.neutral,
+                  onPressed: onVoiceDirections,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 12,
+                  ),
+                  fontSize: 13,
+                ),
+              ),
+            Expanded(
+              child: AppButton(
+                label: '📞 Call 112',
+                variant: AppButtonVariant.danger,
+                onPressed: onCall112,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 12,
+                ),
+                fontSize: 13,
+              ),
+            ),
+          ],
         ),
       ],
     );

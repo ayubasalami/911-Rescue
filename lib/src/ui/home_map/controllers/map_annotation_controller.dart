@@ -21,35 +21,26 @@ int _colorForBandMinutes(int minutes) => TimeBand.bands
     )
     .color;
 
-/// Rasterizes a facility category's legend glyph (colored circle + white
-/// icon) into a PNG, so map pins actually match the legend instead of
-/// being plain colored dots.
-Future<Uint8List> _renderCategoryMarker(FacilityCategory category) async {
-  const size = 96.0;
+/// Rasterizes a facility category's glyph directly in its own color, with
+/// no circle/badge behind it — matches 911rescueme.com's own map markers
+/// (confirmed live: a plain red cross, no white badge or background
+/// shape), rather than this app's earlier circle-badge treatment. Returns
+/// the decoded [ui.Image] rather than an encoded format — callers pick
+/// the encoding they need ([_pngBytes] for the native location puck,
+/// [_mbxImageFrom] for a registered style image).
+Future<ui.Image> _renderCategoryMarkerImage(FacilityCategory category) async {
+  const size = 64.0;
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, size, size));
-  const center = Offset(size / 2, size / 2);
-  const radius = size / 2 - 4;
-
-  canvas.drawCircle(center, radius, Paint()..color = Colors.white);
-  canvas.drawCircle(center, radius - 4, Paint()..color = category.legendColor);
-
-  const glyphSize = size * 0.46;
-  canvas.save();
-  canvas.translate(center.dx - glyphSize / 2, center.dy - glyphSize / 2);
-  paintFacilityCategoryGlyph(canvas, category, Colors.white, glyphSize);
-  canvas.restore();
-
+  paintFacilityCategoryGlyph(canvas, category, category.legendColor, size);
   final picture = recorder.endRecording();
-  final image = await picture.toImage(size.toInt(), size.toInt());
-  final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-  return byteData!.buffer.asUint8List();
+  return picture.toImage(size.toInt(), size.toInt());
 }
 
 /// Rasterizes a map-pin glyph, used both for a dropped pin (bottom-anchored
 /// via [PointAnnotationOptions.iconAnchor]) and for the native GPS location
-/// puck.
-Future<Uint8List> _renderLocationPinImage() async {
+/// puck. Same [ui.Image]-returning convention as [_renderCategoryMarkerImage].
+Future<ui.Image> _renderLocationPinImage() async {
   const size = 96.0;
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, size, size));
@@ -72,9 +63,29 @@ Future<Uint8List> _renderLocationPinImage() async {
   );
 
   final picture = recorder.endRecording();
-  final image = await picture.toImage(size.toInt(), size.toInt());
+  return picture.toImage(size.toInt(), size.toInt());
+}
+
+Future<Uint8List> _pngBytes(ui.Image image) async {
   final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
   return byteData!.buffer.asUint8List();
+}
+
+/// [mapbox.MbxImage]'s own doc comment claims `data` wants raw,
+/// premultiplied-alpha RGBA pixels — confirmed wrong by a live
+/// `PlatformException(0, "Could not initialize the image from the
+/// specified data.")`: this plugin's native side actually decodes `data`
+/// as an *encoded* image (`UIImage(data:)` on iOS,
+/// `BitmapFactory.decodeByteArray` on Android), i.e. plain PNG bytes, same
+/// as [_pngBytes]. `width`/`height` aren't used for decoding either
+/// platform — both derive them from the decoded image — but are required
+/// fields on [mapbox.MbxImage] regardless.
+Future<mapbox.MbxImage> _mbxImageFrom(ui.Image image) async {
+  return mapbox.MbxImage(
+    width: image.width,
+    height: image.height,
+    data: await _pngBytes(image),
+  );
 }
 
 /// Owns every direct interaction with the Mapbox SDK's platform view and
@@ -103,10 +114,43 @@ class MapAnnotationController {
   List<Facility> _lastSourceFacilities = const [];
   FacilityCategory? _lastAppliedFilter;
   final Map<String, Facility> _annotationFacilities = {};
-  final Map<FacilityCategory, Uint8List> _markerImages = {};
+
+  /// Style image IDs already registered via [_ensureStyleImage] — an
+  /// annotation referencing one of these by [mapbox.PointAnnotationOptions
+  /// .iconImage] is guaranteed to find it, since registration is always
+  /// awaited before the annotation referencing it is created. That's the
+  /// actual fix for the SDK's "Required image … is missing" warning: the
+  /// previous per-annotation `image: Uint8List` path left the native image
+  /// registration's timing up to the plugin, which could lose the race
+  /// against the very next style render pass.
+  final Set<String> _registeredStyleImages = {};
+
+  static String _markerImageId(FacilityCategory category) =>
+      'facility-marker-${category.name}';
+  static const _pinDropImageId = 'location-pin-marker';
+
+  Future<void> _ensureStyleImage(
+    String imageId,
+    Future<ui.Image> Function() render,
+  ) async {
+    if (_registeredStyleImages.contains(imageId)) return;
+    final map = _map;
+    if (map == null) return;
+    final mbxImage = await _mbxImageFrom(await render());
+    await map.style.addStyleImage(imageId, 1.0, mbxImage, false, [], [], null);
+    _registeredStyleImages.add(imageId);
+  }
+
+  Future<void> _ensureMarkerImage(FacilityCategory category) =>
+      _ensureStyleImage(
+        _markerImageId(category),
+        () => _renderCategoryMarkerImage(category),
+      );
+
+  Future<void> _ensurePinDropImage() =>
+      _ensureStyleImage(_pinDropImageId, _renderLocationPinImage);
 
   GeoPoint? _lastDroppedPin;
-  Uint8List? _pinDropImage;
 
   static const _trafficSourceId = 'traffic-source';
   static const _trafficLayerId = 'traffic-layer';
@@ -143,7 +187,11 @@ class MapAnnotationController {
         puckBearingEnabled: false,
         locationPuck: mapbox.LocationPuck(
           locationPuck2D: mapbox.LocationPuck2D(
-            topImage: await _renderLocationPinImage(),
+            // The location puck is a separate native codepath from style
+            // annotations — it decodes an encoded image directly rather
+            // than looking one up via addStyleImage, so this one still
+            // wants PNG bytes, not a registered style image.
+            topImage: await _pngBytes(await _renderLocationPinImage()),
           ),
         ),
       ),
@@ -192,10 +240,6 @@ class MapAnnotationController {
     return Offset(pixel.x, pixel.y);
   }
 
-  Future<Uint8List> _markerImageFor(FacilityCategory category) async {
-    return _markerImages[category] ??= await _renderCategoryMarker(category);
-  }
-
   Future<void> syncFacilityPins(
     List<Facility> facilities,
     FacilityCategory? filter,
@@ -214,6 +258,12 @@ class MapAnnotationController {
         if (filter == null || facility.category == filter) facility,
     ];
 
+    // Registered (and awaited) before any annotation referencing it is
+    // created — see [_registeredStyleImages].
+    for (final category in visible.map((f) => f.category).toSet()) {
+      await _ensureMarkerImage(category);
+    }
+
     await manager.deleteAll();
     _annotationFacilities.clear();
     final created = await manager.createMulti([
@@ -222,8 +272,11 @@ class MapAnnotationController {
           geometry: mapbox.Point(
             coordinates: mapbox.Position(facility.longitude, facility.latitude),
           ),
-          image: await _markerImageFor(facility.category),
-          iconSize: 0.80,
+          iconImage: _markerImageId(facility.category),
+          // The glyph now fills its marker image edge to edge (no circle
+          // padding around it like before), so the same iconSize as before
+          // reads much bigger on screen — scaled down to compensate.
+          iconSize: 0.35,
         ),
     ]);
     for (final (index, annotation) in created.indexed) {
@@ -248,18 +301,15 @@ class MapAnnotationController {
     await manager.deleteAll();
     if (point == null) return;
 
+    await _ensurePinDropImage();
     await manager.create(
       mapbox.PointAnnotationOptions(
         geometry: mapboxPointFrom(point),
-        image: await _pinDropMarkerImage(),
+        iconImage: _pinDropImageId,
         iconSize: 0.6,
         iconAnchor: mapbox.IconAnchor.BOTTOM,
       ),
     );
-  }
-
-  Future<Uint8List> _pinDropMarkerImage() async {
-    return _pinDropImage ??= await _renderLocationPinImage();
   }
 
   /// Shows or hides Mapbox's live traffic layer — added once, on top of the

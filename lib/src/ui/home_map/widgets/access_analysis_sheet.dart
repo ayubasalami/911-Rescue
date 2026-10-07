@@ -17,7 +17,8 @@ String _formatPopulation(int value) {
 }
 
 String _formatEta(Duration eta) {
-  if (eta.inHours >= 1) return 'Est. ${eta.inHours} hr ${eta.inMinutes % 60} mins';
+  if (eta.inHours >= 1)
+    return 'Est. ${eta.inHours} hr ${eta.inMinutes % 60} mins';
   return 'Est. ${eta.inMinutes} mins';
 }
 
@@ -35,7 +36,11 @@ class AccessAnalysisSheet extends StatefulWidget {
   });
 
   final AccessAnalysisResult result;
-  final void Function(GeoPoint destination) onMapRoute;
+
+  /// Takes the whole [Facility], not just its point — the caller routes
+  /// this into the same Go to Help card used elsewhere, which needs the
+  /// facility's name/category to display.
+  final void Function(Facility facility) onMapRoute;
   final void Function(GeoPoint destination) onDirections;
   final VoidCallback onClose;
 
@@ -58,7 +63,9 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
         return Container(
           decoration: const BoxDecoration(
             color: AppColors.backgroundSurface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.lg)),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppRadii.lg),
+            ),
           ),
           child: ListView(
             controller: scrollController,
@@ -69,10 +76,16 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
                   Expanded(
                     child: Text(
                       'Real-Time Analysis (${result.mode.label})',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                  InkWell(onTap: widget.onClose, child: const Icon(Icons.close)),
+                  InkWell(
+                    onTap: widget.onClose,
+                    child: const Icon(Icons.close),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -89,7 +102,9 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
                   Expanded(
                     child: _StatCard(
                       label: 'POPULATION',
-                      value: result.population == null ? 'N/A' : _formatPopulation(result.population!),
+                      value: result.population == null
+                          ? 'N/A'
+                          : _formatPopulation(result.population!),
                       color: AppColors.danger,
                     ),
                   ),
@@ -102,7 +117,12 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
               const SizedBox(height: 20),
               const Text(
                 'FACILITIES IN RANGE (TAP TO VIEW)',
-                style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textSecondary, fontSize: 12, letterSpacing: 0.5),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                  letterSpacing: 0.5,
+                ),
               ),
               const SizedBox(height: 8),
               if (result.reachableCount == 0)
@@ -119,7 +139,11 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
                     padding: const EdgeInsets.only(top: 12, bottom: 6),
                     child: Text(
                       band.label.toUpperCase(),
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 12),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                        fontSize: 12,
+                      ),
                     ),
                   ),
                   for (final entry in result.byBand[band]!)
@@ -127,13 +151,17 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
                       entry: entry,
                       expanded: _expandedFacilityId == entry.facility.id,
                       onTap: () => setState(
-                        () => _expandedFacilityId = _expandedFacilityId == entry.facility.id ? null : entry.facility.id,
+                        () => _expandedFacilityId =
+                            _expandedFacilityId == entry.facility.id
+                            ? null
+                            : entry.facility.id,
                       ),
-                      onMapRoute: () => widget.onMapRoute(
-                        GeoPoint(latitude: entry.facility.latitude, longitude: entry.facility.longitude),
-                      ),
+                      onMapRoute: () => widget.onMapRoute(entry.facility),
                       onDirections: () => widget.onDirections(
-                        GeoPoint(latitude: entry.facility.latitude, longitude: entry.facility.longitude),
+                        GeoPoint(
+                          latitude: entry.facility.latitude,
+                          longitude: entry.facility.longitude,
+                        ),
                       ),
                     ),
                 ],
@@ -146,7 +174,11 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
 }
 
 class _StatCard extends StatelessWidget {
-  const _StatCard({required this.label, required this.value, required this.color});
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   final String label;
   final String value;
@@ -164,9 +196,19 @@ class _StatCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
         ],
       ),
     );
@@ -186,18 +228,33 @@ class _ClosestFacilityCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.backgroundCanvas,
         borderRadius: BorderRadius.circular(AppRadii.sm),
-        border: const Border(left: BorderSide(color: AppColors.warning, width: 3)),
+        border: const Border(
+          left: BorderSide(color: AppColors.warning, width: 3),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'CLOSEST FACILITY (ROUTED)',
-            style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: 4),
-          Text(reachable.facility.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-          Text(_formatEta(reachable.eta), style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          Text(
+            reachable.facility.name,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          Text(
+            _formatEta(reachable.eta),
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+            ),
+          ),
         ],
       ),
     );
@@ -226,7 +283,9 @@ class _FacilityRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.backgroundCanvas,
         borderRadius: BorderRadius.circular(AppRadii.sm),
-        border: const Border(left: BorderSide(color: AppColors.success, width: 3)),
+        border: const Border(
+          left: BorderSide(color: AppColors.success, width: 3),
+        ),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.sm),
@@ -239,11 +298,17 @@ class _FacilityRow extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(entry.facility.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    child: Text(
+                      entry.facility.name,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
                   Text(
                     entry.facility.category.displayLabel,
-                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
@@ -251,20 +316,39 @@ class _FacilityRow extends StatelessWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.location_on, size: 14, color: AppColors.textSecondary),
+                    const Icon(
+                      Icons.location_on,
+                      size: 14,
+                      color: AppColors.textSecondary,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       'Straight-line: ${entry.straightLineKm.toStringAsFixed(2)} km',
-                      style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Expanded(child: AppButton(label: 'Map Route', onPressed: onMapRoute, filled: false)),
+                    Expanded(
+                      child: AppButton(
+                        label: 'Map Route',
+                        onPressed: onMapRoute,
+                        filled: false,
+                      ),
+                    ),
                     const SizedBox(width: 8),
-                    Expanded(child: AppButton(label: 'Directions', onPressed: onDirections, filled: false)),
+                    Expanded(
+                      child: AppButton(
+                        label: 'Directions',
+                        onPressed: onDirections,
+                        filled: false,
+                      ),
+                    ),
                   ],
                 ),
               ],

@@ -38,13 +38,13 @@ Future<void> _openLink(BuildContext context, String url) async {
 /// "How to Use This Map" and "Data Sources & Credits" are UI-only for now
 /// (no backing data/logic exists yet); search, the facility-category
 /// filter, the Emergency Facilities, Live Traffic and Lagos Boundary
-/// layer toggles, the Accessibility Analyzer defaults, Clear Analysis, and
+/// layer toggles, the Accessibility Analyzer defaults, Clear Map, and
 /// every footer link are wired to real state/actions.
 class HomeDrawer extends ConsumerWidget {
   const HomeDrawer({
     super.key,
     required this.onUseCurrentLocation,
-    required this.onClearAnalysis,
+    required this.onClearMap,
     required this.onSelectSearchResult,
     this.searchFocusNode,
   });
@@ -54,9 +54,9 @@ class HomeDrawer extends ConsumerWidget {
   /// it's passed in rather than duplicated here.
   final VoidCallback onUseCurrentLocation;
 
-  /// Reuses the same cancel-analysis flow as the map's trash-icon side
-  /// button, for the same reason.
-  final VoidCallback onClearAnalysis;
+  /// Reuses the same clear-everything-and-recenter flow as the map's
+  /// trash-icon side button, for the same reason.
+  final VoidCallback onClearMap;
 
   /// Flies to and selects a tapped search result — same reason as
   /// [onUseCurrentLocation]: needs the screen's MapAnnotationController.
@@ -151,9 +151,9 @@ class HomeDrawer extends ConsumerWidget {
                   state?.analysisThresholdMinutes ??
                   kAccessAnalysisThresholdMinutes,
               onThresholdChanged: notifier.setAnalysisThreshold,
-              onClearAnalysis: () {
+              onClearMap: () {
                 Scaffold.of(context).closeDrawer();
-                onClearAnalysis();
+                onClearMap();
               },
             ),
             _HelpLinksSection(
@@ -560,14 +560,14 @@ class _AnalyzerDefaultsSection extends StatelessWidget {
     required this.onModeChanged,
     required this.thresholdMinutes,
     required this.onThresholdChanged,
-    required this.onClearAnalysis,
+    required this.onClearMap,
   });
 
   final TransportMode selectedMode;
   final ValueChanged<TransportMode> onModeChanged;
   final int thresholdMinutes;
   final ValueChanged<int> onThresholdChanged;
-  final VoidCallback onClearAnalysis;
+  final VoidCallback onClearMap;
 
   @override
   Widget build(BuildContext context) {
@@ -643,8 +643,8 @@ class _AnalyzerDefaultsSection extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: AppButton(
-              label: 'Clear Analysis',
-              onPressed: onClearAnalysis,
+              label: 'Clear Map',
+              onPressed: onClearMap,
               variant: AppButtonVariant.danger,
               filled: false,
             ),

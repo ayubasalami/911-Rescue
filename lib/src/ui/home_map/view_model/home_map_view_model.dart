@@ -669,6 +669,48 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     );
   }
 
+  /// Routes to [facility] directly, skipping the "nearest of category"
+  /// search [startGoToHelp] does — used when the destination is already
+  /// chosen, e.g. "Map Route" on a specific facility row in the Access
+  /// Analysis sheet. Takes an explicit [origin]/[followsUser] rather than
+  /// reading [HomeMapState.originSelection] the way [startGoToHelp] does:
+  /// by the time this is called that popup is usually already gone, since
+  /// the analysis sheet tracks its own origin separately (see
+  /// [resolveRouteOrigin]).
+  Future<void> startGoToHelpToFacility(
+    Facility facility, {
+    required GeoPoint origin,
+    required bool followsUser,
+  }) async {
+    _update((s) => s.copyWith(goToHelpLoading: true));
+    final route = await fetchRoute(
+      origin,
+      GeoPoint(latitude: facility.latitude, longitude: facility.longitude),
+    );
+    if (route == null) {
+      _update((s) => s.copyWith(goToHelpLoading: false));
+      return;
+    }
+
+    _update(
+      (s) => s.copyWith(
+        goToHelpDestination: facility,
+        goToHelpRoute: route,
+        goToHelpCardExpanded: true,
+        goToHelpLoading: false,
+        goToHelpOrigin: origin,
+        goToHelpFollowsUser: followsUser,
+        showGetHelpFast: false,
+        originSelection: null,
+        selectedFacility: null,
+        activeAnalysis: null,
+        activeAnalysisOrigin: null,
+        activeAnalysisFollowsUser: false,
+        showAnalysisSheet: false,
+      ),
+    );
+  }
+
   /// Re-fetches the active Go to Help route with the current
   /// [HomeMapState.selectedTransportMode] — used when the mode bar changes.
   /// Also re-resolves the origin when it's tracking live location (see
