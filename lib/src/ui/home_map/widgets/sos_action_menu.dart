@@ -2,19 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 
-/// The expanded state of the map's SOS button: a quick "Report Incident" /
-/// "Call for Help" choice, with a dismiss control replacing the FAB itself.
+/// The SOS menu's "Report Incident" / "Call for Help" choices, shown above
+/// the SOS button — which stays put and turns into the ✕ (see [SosFab]),
+/// like the web, rather than this menu bringing its own close button.
 class SosActionMenu extends StatelessWidget {
   const SosActionMenu({
     super.key,
     required this.onReportIncident,
     required this.onCallForHelp,
-    required this.onClose,
   });
 
   final VoidCallback onReportIncident;
   final VoidCallback onCallForHelp;
-  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -35,27 +34,18 @@ class SosActionMenu extends StatelessWidget {
           color: AppColors.danger,
           onTap: onCallForHelp,
         ),
-        const SizedBox(height: 10),
-        Material(
-          color: const Color(0xFF616161),
-          shape: const CircleBorder(),
-          child: InkWell(
-            customBorder: const CircleBorder(),
-            onTap: onClose,
-            child: const SizedBox(
-              width: 56,
-              height: 56,
-              child: Icon(Icons.close, color: Colors.white),
-            ),
-          ),
-        ),
       ],
     );
   }
 }
 
 class _ActionPill extends StatelessWidget {
-  const _ActionPill({required this.icon, required this.label, required this.color, required this.onTap});
+  const _ActionPill({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String label;
@@ -79,7 +69,13 @@ class _ActionPill extends StatelessWidget {
             children: [
               Icon(icon, color: Colors.white, size: 18),
               const SizedBox(width: 8),
-              Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),

@@ -943,13 +943,24 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           Positioned(
             right: 16,
             bottom: 16 + bottomInset,
-            child: (state?.showSosMenu ?? false)
-                ? SosActionMenu(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (state?.showSosMenu ?? false) ...[
+                  SosActionMenu(
                     onReportIncident: _openTriageEntry,
                     onCallForHelp: _call112,
-                    onClose: _viewModel.toggleSosMenu,
-                  )
-                : SosFab(onPressed: _viewModel.toggleSosMenu),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+                // Stays mounted in both states so it can spin into the ✕.
+                SosFab(
+                  open: state?.showSosMenu ?? false,
+                  onPressed: _viewModel.toggleSosMenu,
+                ),
+              ],
+            ),
           ),
           if (showFloatingAnalysisControls)
             Positioned(
