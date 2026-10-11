@@ -266,6 +266,10 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
   List<RoutePoint>? _results;
   bool _loading = false;
 
+  /// Set when nothing came back *and* a search failed — so a network error
+  /// isn't presented as "No matches".
+  String? _error;
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -280,6 +284,7 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
       setState(() {
         _results = null;
         _loading = false;
+        _error = null;
       });
       return;
     }
@@ -300,12 +305,18 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
     // A slower, older request can land after a newer one — drop it rather
     // than overwrite the newer results with stale ones.
     if (widget.controller.text.trim() != trimmed) return;
+    final results = [
+      ...?facilities.valueOrNull?.map(RoutePoint.fromFacility),
+      ...?places.valueOrNull,
+    ];
+    // One source failing is fine if the other found something. Empty with
+    // a failure means "couldn't search", not "nothing exists" — prefer the
+    // facility search's message, it's the one with network-aware wording.
+    final failure = facilities.failureOrNull ?? places.failureOrNull;
     setState(() {
       _loading = false;
-      _results = [
-        ...?facilities.valueOrNull?.map(RoutePoint.fromFacility),
-        ...?places.valueOrNull,
-      ];
+      _results = results;
+      _error = results.isEmpty && failure != null ? failure.userMessage : null;
     });
   }
 
@@ -372,7 +383,15 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
               ],
             ),
           ),
-          if (_results != null)
+          if (_error case final error?)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                error,
+                style: const TextStyle(color: AppColors.danger, fontSize: 12),
+              ),
+            )
+          else if (_results != null)
             if (_results!.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 6),
