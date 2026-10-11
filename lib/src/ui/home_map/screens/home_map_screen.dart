@@ -34,6 +34,7 @@ import '../widgets/map_legend.dart';
 import '../widgets/route_active_chip.dart';
 import '../widgets/route_planner_card.dart';
 import '../widgets/sos_action_menu.dart';
+import '../widgets/sos_fab.dart';
 import '../widgets/turn_by_turn_sheet.dart';
 import '../widgets/view_results_button.dart';
 import '../widgets/zoom_in_hint.dart';
@@ -948,14 +949,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     onCallForHelp: _call112,
                     onClose: _viewModel.toggleSosMenu,
                   )
-                : FloatingActionButton(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadiusGeometry.circular(200),
-                    ),
-                    backgroundColor: AppColors.danger,
-                    onPressed: _viewModel.toggleSosMenu,
-                    child: const Text('🚨', style: TextStyle(fontSize: 26)),
-                  ),
+                : SosFab(onPressed: _viewModel.toggleSosMenu),
           ),
           if (showFloatingAnalysisControls)
             Positioned(

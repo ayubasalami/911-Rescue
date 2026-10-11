@@ -7,6 +7,12 @@ import 'package:rescue_911/src/data/network/cookie_jar_provider.dart';
 
 void main() {
   testWidgets('App boots to the Home/Map screen', (WidgetTester tester) async {
+    // The SOS button pulses forever, so pumpAndSettle would never settle —
+    // run with the system "reduce motion" setting on, which stops it.
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
