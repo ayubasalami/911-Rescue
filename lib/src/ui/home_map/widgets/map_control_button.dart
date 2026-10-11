@@ -2,41 +2,35 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 
+/// A square map control, styled like the web platform's mobile controls:
+/// always white with a 1px #ddd border and 4px corners. On/off state is
+/// shown by the [icon]'s own color (e.g. blue legend, amber traffic), not
+/// by filling the button.
 class MapControlButton extends StatelessWidget {
-  const MapControlButton({
-    super.key,
-    required this.icon,
-    required this.onTap,
-    this.active = false,
-    this.iconColor = AppColors.primary,
-  });
+  const MapControlButton({super.key, required this.icon, required this.onTap});
 
-  final IconData icon;
+  final Widget icon;
   final VoidCallback onTap;
 
-  /// Whether this control's toggled-on state should be shown (e.g. the
-  /// legend or traffic toggle while enabled).
-  final bool active;
-
-  /// Icon color when not [active] — e.g. red for a destructive action.
-  final Color iconColor;
+  static const _radius = BorderRadius.all(Radius.circular(4));
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: active ? AppColors.primary : AppColors.backgroundSurface,
-      borderRadius: BorderRadius.circular(AppRadii.sm),
+      color: AppColors.backgroundSurface,
+      borderRadius: _radius,
       child: InkWell(
-        borderRadius: BorderRadius.circular(AppRadii.sm),
+        borderRadius: _radius,
         onTap: onTap,
         child: Container(
           width: 44,
           height: 44,
+          alignment: Alignment.center,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadii.sm),
-            border: Border.all(color: AppColors.border),
+            borderRadius: _radius,
+            border: Border.all(color: const Color(0xFFDDDDDD)),
           ),
-          child: Icon(icon, color: active ? Colors.white : iconColor, size: 20),
+          child: icon,
         ),
       ),
     );

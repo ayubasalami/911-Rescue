@@ -29,6 +29,7 @@ import '../widgets/go_to_help_mode_bar.dart';
 import '../widgets/home_drawer.dart';
 import '../widgets/home_map_header.dart';
 import '../widgets/map_control_button.dart';
+import '../widgets/map_control_icons.dart';
 import '../widgets/map_legend.dart';
 import '../widgets/route_active_chip.dart';
 import '../widgets/route_planner_card.dart';
@@ -662,6 +663,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// instead of crowding the top.
   static const _popupShiftDown = 150.0;
 
+  /// The web draws its control icons at 18px in a 34px button; scaled to
+  /// our 44px buttons that's ~22px.
+  static const _controlIconSize = 22.0;
+
   /// [_visibleFacilities], additionally gated by zoom — a *separate* method
   /// from it (rather than folding the check in there) since the zoom-in
   /// hint needs to know "would there be facilities to show here if zoomed
@@ -803,7 +808,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             top: 6 + topInset,
             left: 16,
             child: MapControlButton(
-              icon: Icons.menu,
+              icon: const Icon(Icons.menu, color: AppColors.primary, size: 20),
               onTap: () => _scaffoldKey.currentState?.openDrawer(),
             ),
           ),
@@ -866,15 +871,30 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             top: 110 + topInset,
             child: Column(
               children: [
+                // Icons and colors copied from the web's own controls:
+                // blue locate/route-planner, black home/search, pink clear;
+                // legend turns blue and traffic amber while switched on.
                 MapControlButton(
-                  icon: Icons.my_location,
+                  icon: MapControlIcon.locate.build(
+                    color: AppColors.primary,
+                    size: _controlIconSize,
+                  ),
                   onTap: _recenterOnUser,
                 ),
                 const SizedBox(height: 8),
-                MapControlButton(icon: Icons.home, onTap: _resetToDefaultView),
+                MapControlButton(
+                  icon: MapControlIcon.home.build(
+                    color: AppColors.textPrimary,
+                    size: _controlIconSize,
+                  ),
+                  onTap: _resetToDefaultView,
+                ),
                 const SizedBox(height: 8),
                 MapControlButton(
-                  icon: Icons.search,
+                  icon: MapControlIcon.search.build(
+                    color: AppColors.textPrimary,
+                    size: _controlIconSize,
+                  ),
                   onTap: () {
                     _scaffoldKey.currentState?.openDrawer();
                     _searchFocusNode.requestFocus();
@@ -882,26 +902,38 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 ),
                 const SizedBox(height: 8),
                 MapControlButton(
-                  icon: Icons.near_me,
-                  active: state?.showRoutePlanner ?? false,
+                  icon: MapControlIcon.routePlanner.build(
+                    color: AppColors.primary,
+                    size: _controlIconSize,
+                  ),
                   onTap: _viewModel.toggleRoutePlanner,
                 ),
                 const SizedBox(height: 8),
                 MapControlButton(
-                  icon: Icons.list,
-                  active: state?.showLegend ?? true,
+                  icon: MapControlIcon.legend.build(
+                    color: (state?.showLegend ?? true)
+                        ? AppColors.primary
+                        : AppColors.textPrimary,
+                    size: _controlIconSize,
+                  ),
                   onTap: _viewModel.toggleLegend,
                 ),
                 const SizedBox(height: 8),
                 MapControlButton(
-                  icon: Icons.delete_outline,
-                  iconColor: AppColors.danger,
+                  icon: MapControlIcon.clear.build(
+                    color: AppColors.danger,
+                    size: _controlIconSize,
+                  ),
                   onTap: _clearActiveFeature,
                 ),
                 const SizedBox(height: 8),
                 MapControlButton(
-                  icon: Icons.traffic,
-                  active: state?.showLiveTraffic ?? false,
+                  icon: MapControlIcon.traffic.build(
+                    color: (state?.showLiveTraffic ?? false)
+                        ? AppColors.warning
+                        : AppColors.textPrimary,
+                    size: _controlIconSize,
+                  ),
                   onTap: _viewModel.toggleLiveTrafficLayer,
                 ),
               ],
