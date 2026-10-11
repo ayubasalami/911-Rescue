@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:url_launcher/url_launcher.dart';
 
@@ -10,6 +11,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
+import '../../../data/models/route_point.dart';
 import '../../get_help/widgets/get_help_sheet.dart';
 import '../../triage_chat/widgets/triage_chat_sheet.dart';
 import '../../triage_chat/widgets/triage_entry_sheet.dart';
@@ -29,6 +31,7 @@ import '../widgets/home_map_header.dart';
 import '../widgets/map_control_button.dart';
 import '../widgets/map_legend.dart';
 import '../widgets/route_active_chip.dart';
+import '../widgets/route_planner_card.dart';
 import '../widgets/sos_action_menu.dart';
 import '../widgets/turn_by_turn_sheet.dart';
 import '../widgets/view_results_button.dart';
@@ -128,7 +131,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   Future<void> _recenterOnUser() async {
     final point = await _viewModel.recenterOnUser();
     if (point == null || !mounted) return;
-    await _mapController.flyTo(point);
+    await _mapController.flyTo(point, shiftDown: _popupShiftDown);
     if (!mounted) return;
     final anchor = await _mapController.pixelForCoordinate(point);
     if (!mounted) return;
@@ -213,7 +216,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// stuck behind the app bar — skipped while [_goToHelpActive], so the
   /// camera stays put instead of yanking away from the route overview.
   Future<void> _selectDroppedPin(GeoPoint point) async {
-    if (!_goToHelpActive) await _mapController.flyTo(point);
+    if (!_goToHelpActive) {
+      await _mapController.flyTo(point, shiftDown: _popupShiftDown);
+    }
     if (!mounted) return;
     final anchor = await _mapController.pixelForCoordinate(point);
     if (!mounted) return;
@@ -234,16 +239,52 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// Flies to and selects [facility] — shared by tapping a facility marker
   /// and tapping a search result in the drawer. Skips the fly-to while
   /// [_goToHelpActive], same reasoning as [_selectDroppedPin].
+  ///
+  /// `/api/search_facilities` (confirmed live) returns only name/category/
+  /// coordinates — no address or phone — unlike `/api/hospitals`, which the
+  /// app already has fully loaded. So a search result gets swapped for its
+  /// full-detail match from the loaded list when one exists, same as the
+  /// web platform's popup does, rather than showing a popup with blank
+  /// address/phone lines.
+  ///
+  /// Matches by name + proximity, not an exact coordinate/id match:
+  /// confirmed live that `/api/search_facilities` and `/api/hospitals`
+  /// don't return bit-identical coordinates for the same facility (e.g.
+  /// `3.356225` vs `3.35622500000005`) — floating-point noise from the two
+  /// endpoints going through different backend code paths, not a real
+  /// position difference. An exact match on the synthetic id (which
+  /// encodes the raw coordinates) silently fails for most facilities as a
+  /// result, so this allows up to 100m of drift instead.
   Future<void> _selectFacility(Facility facility) async {
+    final allFacilities =
+        ref.read(homeMapViewModelProvider).value?.facilities ??
+        const <Facility>[];
+    var detailed = facility;
+    for (final candidate in allFacilities) {
+      if (candidate.name != facility.name) continue;
+      final driftMeters = Geolocator.distanceBetween(
+        candidate.latitude,
+        candidate.longitude,
+        facility.latitude,
+        facility.longitude,
+      );
+      if (driftMeters <= 100) {
+        detailed = candidate;
+        break;
+      }
+    }
+
     final point = GeoPoint(
-      latitude: facility.latitude,
-      longitude: facility.longitude,
+      latitude: detailed.latitude,
+      longitude: detailed.longitude,
     );
-    if (!_goToHelpActive) await _mapController.flyTo(point);
+    if (!_goToHelpActive) {
+      await _mapController.flyTo(point, shiftDown: _popupShiftDown);
+    }
     if (!mounted) return;
     final anchor = await _mapController.pixelForCoordinate(point);
     if (!mounted) return;
-    _viewModel.selectFacility(facility);
+    _viewModel.selectFacility(detailed);
     _popupAnchor.value = anchor;
   }
 
@@ -502,6 +543,38 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     ]);
   }
 
+  /// The Route Planner panel's own "Get Directions" — both ends are
+  /// whatever the user searched or picked ("Use current location"), not a
+  /// fixed facility. Same map-rendering tail as [_startGoToHelpToFacility].
+  Future<void> _startRoutePlan(
+    RoutePoint origin,
+    RoutePoint destination, {
+    required bool originFollowsUser,
+  }) async {
+    await _mapController.clearIsochroneAndRoute();
+    if (!mounted) return;
+
+    await _viewModel.startRoutePlan(
+      origin: origin,
+      destination: destination,
+      originFollowsUser: originFollowsUser,
+    );
+    final state = ref.read(homeMapViewModelProvider).value;
+    final resolvedOrigin = state?.goToHelpOrigin;
+    final route = state?.goToHelpRoute;
+    if (!mounted || resolvedOrigin == null || route == null) return;
+    await _mapController.renderRoute([resolvedOrigin, ...route.points]);
+    if (!mounted) return;
+    await _mapController.flyToBounds([
+      resolvedOrigin,
+      ...route.points,
+      GeoPoint(
+        latitude: destination.latitude,
+        longitude: destination.longitude,
+      ),
+    ]);
+  }
+
   Future<void> _getDirectionsTo(GeoPoint origin, GeoPoint destination) async {
     final route = await _viewModel.fetchRoute(origin, destination);
     if (route == null) return;
@@ -588,6 +661,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// rendering all ~2,900 Lagos-wide facilities at once is an unreadable
   /// wall of overlapping pins rather than a usable map.
   static const _facilityVisibleZoom = 13.0;
+
+  /// How far below screen center to land a point whose popup anchors
+  /// *above* it (facility, dropped pin, "Your Location") — roughly half a
+  /// typical card's height, so the card itself sits near mid-screen
+  /// instead of crowding the top.
+  static const _popupShiftDown = 150.0;
 
   /// [_visibleFacilities], additionally gated by zoom — a *separate* method
   /// from it (rather than folding the check in there) since the zoom-in
@@ -738,9 +817,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             right: 16,
             child: const HomeMapHeader(),
           ),
-          // Hidden while a Go to Help route is active — the transport mode
-          // bar takes over this same top slot instead (see below).
-          if (state?.goToHelpRoute == null)
+          // Hidden while a Go to Help route is active (the transport mode
+          // bar takes over this same top slot instead, see below) or while
+          // the Route Planner panel is open (it occupies the same area).
+          if (state?.goToHelpRoute == null &&
+              !(state?.showRoutePlanner ?? false))
             Positioned(
               top: 58 + topInset,
               left: 0,
@@ -748,6 +829,28 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               child: FacilityFilterRow(
                 selected: state?.selectedFilter,
                 onSelected: _viewModel.selectFilter,
+              ),
+            ),
+          if (state?.showRoutePlanner ?? false)
+            Positioned(
+              top: 58 + topInset,
+              left: 16,
+              child: RoutePlannerCard(
+                onClose: _viewModel.closeRoutePlanner,
+                selectedMode:
+                    state?.selectedTransportMode ?? TransportMode.driving,
+                onModeSelected: _viewModel.setSelectedMode,
+                loading: state?.goToHelpLoading ?? false,
+                onGetDirections:
+                    (origin, destination, {required originFollowsUser}) {
+                      unawaited(
+                        _startRoutePlan(
+                          origin,
+                          destination,
+                          originFollowsUser: originFollowsUser,
+                        ),
+                      );
+                    },
               ),
             ),
           ValueListenableBuilder<double>(
@@ -784,7 +887,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 const SizedBox(height: 8),
                 MapControlButton(
                   icon: Icons.near_me,
-                  onTap: () => _showComingSoon('Route planner'),
+                  active: state?.showRoutePlanner ?? false,
+                  onTap: _viewModel.toggleRoutePlanner,
                 ),
                 const SizedBox(height: 8),
                 MapControlButton(

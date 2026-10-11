@@ -198,17 +198,34 @@ class MapAnnotationController {
     );
   }
 
-  Future<void> flyTo(GeoPoint point) {
-    // 13, not 12: matches HomeMapScreen's facility-marker zoom threshold,
-    // so deliberately centering on a point (dropped pin, "My Location",
-    // Go to Help tracking, …) actually reveals nearby facilities instead
-    // of landing just below where they'd show.
-    return _map?.flyTo(
-          mapbox.CameraOptions(center: mapboxPointFrom(point), zoom: 13),
-          mapbox.MapAnimationOptions(duration: 800),
-        ) ??
-        Future.value();
+  /// [shiftDown] lands [point] that many pixels below screen center instead
+  /// of on it — for points that open a popup anchored *above* them, so the
+  /// card itself ends up roughly centered rather than crowding the top.
+  Future<void> flyTo(GeoPoint point, {double shiftDown = 0}) async {
+    final map = _map;
+    if (map == null) return;
+    // At least 13 (HomeMapScreen's facility-marker threshold), so centering
+    // on a point reveals nearby facilities — but never zooms *out* if the
+    // user is already closer than that.
+    final currentZoom = (await map.getCameraState()).zoom;
+    // easeTo, not flyTo: flyTo's arc zooms out mid-flight, dipping below
+    // the marker threshold and back, which wiped and redrew every facility
+    // marker during the animation.
+    await map.easeTo(
+      mapbox.CameraOptions(
+        center: mapboxPointFrom(point),
+        zoom: currentZoom > 13 ? currentZoom : 13,
+        // Top padding moves the camera's reference center down by half
+        // its value. Always set explicitly (zero when not shifting) since
+        // Mapbox keeps the last padding for later camera moves otherwise.
+        padding: _edgeInsets(top: shiftDown * 2),
+      ),
+      mapbox.MapAnimationOptions(duration: 800),
+    );
   }
+
+  static mapbox.MbxEdgeInsets _edgeInsets({double top = 0}) =>
+      mapbox.MbxEdgeInsets(top: top, left: 0, bottom: 0, right: 0);
 
   /// Zooms/pans to fit every point in [points] on screen at once — used for
   /// the Go to Help route overview, matching the web platform's zoom-out
@@ -229,6 +246,9 @@ class MapAnnotationController {
       null,
       null,
     );
+    // Clear any shift left over from [flyTo] — the fit above assumes an
+    // unpadded view.
+    camera.padding = _edgeInsets();
     await map.flyTo(camera, mapbox.MapAnimationOptions(duration: 800));
   }
 

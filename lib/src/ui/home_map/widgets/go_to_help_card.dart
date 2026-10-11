@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
+import '../../../data/models/route_point.dart';
 import '../../core/widgets/app_button.dart';
 
 /// The turn-by-turn card shown while "Go to Help" is active — bottom-
@@ -33,7 +34,7 @@ class GoToHelpCard extends StatelessWidget {
     this.onConfirmSos,
   });
 
-  final Facility destination;
+  final RoutePoint destination;
   final DirectionsRoute route;
   final bool expanded;
   final VoidCallback onToggleExpanded;

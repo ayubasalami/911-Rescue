@@ -7,6 +7,7 @@ import '../../../core/result.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
+import '../../../data/models/route_point.dart';
 import '../../../data/repositories/access_analysis_repository.dart';
 import '../../../data/repositories/facility_repository.dart';
 import '../../../data/repositories/location_repository.dart';
@@ -73,6 +74,7 @@ class HomeMapState {
     this.originSelection,
     this.selectedFacility,
     this.showGetHelpFast = false,
+    this.showRoutePlanner = false,
     this.goToHelpDestination,
     this.goToHelpRoute,
     this.goToHelpCardExpanded = true,
@@ -133,10 +135,18 @@ class HomeMapState {
   /// same map point, rather than opening a separate sheet.
   final bool showGetHelpFast;
 
-  /// The nearest facility of the chosen category, and the active route to
-  /// it — non-null together for the whole "Go to Help" lifetime, matching
-  /// the web platform's turn-by-turn card.
-  final Facility? goToHelpDestination;
+  /// Whether the top-left Route Planner input panel (free-form origin +
+  /// destination search) is open — independent of whether a route is
+  /// actually active, matching the web platform: closing the panel doesn't
+  /// cancel an active route, and the panel stays open after "Get
+  /// Directions" so its own result chip can show alongside it.
+  final bool showRoutePlanner;
+
+  /// The point the active route leads to, and the route itself — non-null
+  /// together for the whole "Go to Help"/Route Planner lifetime, matching
+  /// the web platform's turn-by-turn card. Not necessarily a real
+  /// [Facility]: the Route Planner's destination can be any searched place.
+  final RoutePoint? goToHelpDestination;
   final DirectionsRoute? goToHelpRoute;
 
   /// Whether the Go to Help card shows its full turn-by-turn body or just
@@ -200,6 +210,7 @@ class HomeMapState {
     Object? originSelection = _unset,
     Object? selectedFacility = _unset,
     bool? showGetHelpFast,
+    bool? showRoutePlanner,
     Object? goToHelpDestination = _unset,
     Object? goToHelpRoute = _unset,
     bool? goToHelpCardExpanded,
@@ -249,9 +260,10 @@ class HomeMapState {
           ? this.selectedFacility
           : selectedFacility as Facility?,
       showGetHelpFast: showGetHelpFast ?? this.showGetHelpFast,
+      showRoutePlanner: showRoutePlanner ?? this.showRoutePlanner,
       goToHelpDestination: identical(goToHelpDestination, _unset)
           ? this.goToHelpDestination
-          : goToHelpDestination as Facility?,
+          : goToHelpDestination as RoutePoint?,
       goToHelpRoute: identical(goToHelpRoute, _unset)
           ? this.goToHelpRoute
           : goToHelpRoute as DirectionsRoute?,
@@ -391,6 +403,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         ),
         selectedFacility: null,
         showGetHelpFast: false,
+        showRoutePlanner: false,
         goToHelpDestination: null,
         goToHelpRoute: null,
         goToHelpOrigin: null,
@@ -402,13 +415,22 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     );
   }
 
+  /// Selecting a facility always shows its marker — clears
+  /// [HomeMapState.selectedFilter] so a category filter left on from
+  /// before can't hide the thing just selected. Confirmed as a real bug:
+  /// with a filter active, searching for and selecting a facility outside
+  /// it flew the camera there and opened its popup, but its marker was
+  /// filtered out of [MapAnnotationController.syncFacilityPins]'s render
+  /// list the whole time.
   void selectFacility(Facility facility) {
     _cancelTracking();
     _update(
       (s) => s.copyWith(
         selectedFacility: facility,
+        selectedFilter: null,
         originSelection: null,
         showGetHelpFast: false,
+        showRoutePlanner: false,
         goToHelpDestination: null,
         goToHelpRoute: null,
         goToHelpOrigin: null,
@@ -427,6 +449,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         originSelection: null,
         selectedFacility: null,
         showGetHelpFast: false,
+        showRoutePlanner: false,
         goToHelpDestination: null,
         goToHelpRoute: null,
         goToHelpOrigin: null,
@@ -454,6 +477,12 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   /// Swaps back to the origin popup (dropped pin or "Your Location") that
   /// "Get Help Fast" was opened from, without closing the popup entirely.
   void closeGetHelpFast() => _update((s) => s.copyWith(showGetHelpFast: false));
+
+  void toggleRoutePlanner() =>
+      _update((s) => s.copyWith(showRoutePlanner: !s.showRoutePlanner));
+
+  void closeRoutePlanner() =>
+      _update((s) => s.copyWith(showRoutePlanner: false));
 
   void toggleLegend() => _update((s) => s.copyWith(showLegend: !s.showLegend));
 
@@ -654,9 +683,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       return;
     }
 
+    final destination = RoutePoint.fromFacility(nearest);
     _update(
       (s) => s.copyWith(
-        goToHelpDestination: nearest,
+        goToHelpDestination: destination,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
         goToHelpLoading: false,
@@ -694,12 +724,58 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
 
     _update(
       (s) => s.copyWith(
-        goToHelpDestination: facility,
+        goToHelpDestination: RoutePoint.fromFacility(facility),
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
         goToHelpLoading: false,
         goToHelpOrigin: origin,
         goToHelpFollowsUser: followsUser,
+        showGetHelpFast: false,
+        originSelection: null,
+        selectedFacility: null,
+        activeAnalysis: null,
+        activeAnalysisOrigin: null,
+        activeAnalysisFollowsUser: false,
+        showAnalysisSheet: false,
+      ),
+    );
+  }
+
+  /// The Route Planner's "Get Directions" — unlike every other Go to Help
+  /// entry point, both ends are arbitrary [RoutePoint]s (a searched place,
+  /// a known facility, or the user's current location), not a fixed
+  /// facility destination from a fixed origin. [originFollowsUser] mirrors
+  /// [startGoToHelp]'s live-GPS handling: when the planner's origin was
+  /// "Use Current Location" rather than a searched point, this re-fetches
+  /// a fresh fix instead of trusting [origin]'s (possibly now-stale) one.
+  Future<void> startRoutePlan({
+    required RoutePoint origin,
+    required RoutePoint destination,
+    required bool originFollowsUser,
+  }) async {
+    var originPoint = origin.point;
+    if (originFollowsUser) {
+      final result = await ref
+          .read(locationRepositoryProvider)
+          .currentPosition();
+      originPoint = result.position ?? originPoint;
+    }
+
+    _update((s) => s.copyWith(goToHelpLoading: true));
+    final route = await fetchRoute(originPoint, destination.point);
+    if (route == null) {
+      _update((s) => s.copyWith(goToHelpLoading: false));
+      return;
+    }
+
+    _update(
+      (s) => s.copyWith(
+        goToHelpDestination: destination,
+        goToHelpRoute: route,
+        goToHelpCardExpanded: true,
+        goToHelpLoading: false,
+        goToHelpOrigin: originPoint,
+        goToHelpFollowsUser: originFollowsUser,
         showGetHelpFast: false,
         originSelection: null,
         selectedFacility: null,

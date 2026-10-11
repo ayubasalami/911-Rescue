@@ -91,6 +91,11 @@ class FacilityPopupCard extends StatelessWidget {
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 15,
+                          // Matches the web card's own facility-name color
+                          // (confirmed live on 911rescueme.com) — this app
+                          // was rendering it in the default near-black text
+                          // color instead.
+                          color: AppColors.success,
                         ),
                       ),
                       Text(
@@ -143,29 +148,65 @@ class FacilityPopupCard extends StatelessWidget {
                 ],
               ),
             ],
+            if (facility.phone case final phone?) ...[
+              const SizedBox(height: 4),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.phone,
+                    size: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      phone,
+                      style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: AppButton(
-                label: 'View Info',
-                onPressed: onViewInfo,
-                filled: false,
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: AppButton(
-                label: 'Analyze Access',
-                onPressed: onAnalyzeAccess,
-                variant: AppButtonVariant.success,
-              ),
+            Row(
+              spacing: 8,
+              children: [
+                Expanded(
+                  child: AppButton(
+                    label: 'View Info',
+                    onPressed: onViewInfo,
+                    filled: false,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 14,
+                    ),
+                    fontSize: 12,
+                  ),
+                ),
+                Expanded(
+                  child: AppButton(
+                    label: 'Analyze Access',
+                    onPressed: onAnalyzeAccess,
+                    variant: AppButtonVariant.success,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 14,
+                    ),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: AppButton(
                 label: 'Get Directions',
+                icon: Icons.directions,
                 onPressed: onGetDirections,
               ),
             ),

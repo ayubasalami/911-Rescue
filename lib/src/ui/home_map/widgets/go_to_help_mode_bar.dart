@@ -19,15 +19,16 @@ class GoToHelpModeBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.backgroundSurface,
-      borderRadius: BorderRadius.circular(AppRadii.full),
-      elevation: 4,
-      shadowColor: Colors.black26,
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        borderRadius: BorderRadius.circular(AppRadii.full),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(4),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          // mainAxisSize: MainAxisSize.min,
           children: [
             for (final mode in TransportMode.values)
               _ModeChip(
@@ -40,17 +41,6 @@ class GoToHelpModeBar extends StatelessWidget {
       ),
     );
   }
-}
-
-extension on TransportMode {
-  /// The mode bar's short label — distinct from [TransportModeEmoji.dropdownLabel]
-  /// which is written for the sidebar's full "Driving (Lagos Traffic)" style text.
-  String get modeBarLabel => switch (this) {
-    TransportMode.driving => 'Car',
-    TransportMode.motorbike => 'Okada',
-    TransportMode.cycling => 'Bike',
-    TransportMode.walking => 'Walk',
-  };
 }
 
 class _ModeChip extends StatelessWidget {
@@ -68,27 +58,17 @@ class _ModeChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadii.full),
+      borderRadius: BorderRadius.circular(AppRadii.sm),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppRadii.full),
+          color: selected ? AppColors.primary : AppColors.border,
+          borderRadius: BorderRadius.circular(AppRadii.sm),
+          border: Border.all(color: AppColors.backgroundSurface),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(mode.emoji, style: const TextStyle(fontSize: 12)),
-            const SizedBox(width: 3),
-            Text(
-              mode.modeBarLabel,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: selected ? Colors.white : AppColors.textPrimary,
-              ),
-            ),
-          ],
+          children: [Text(mode.emoji, style: const TextStyle(fontSize: 18))],
         ),
       ),
     );
