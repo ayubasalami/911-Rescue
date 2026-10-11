@@ -11,40 +11,48 @@ import '../../core/widgets/facility_category_glyph.dart';
 class MapLegend extends StatelessWidget {
   const MapLegend({super.key});
 
+  // Sizes taken from the web stylesheet's mobile overrides for
+  // `.info.legend` / `.legend-item` / `.legend-color` / `.legend-title`.
   @override
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.backgroundSurface.withValues(alpha: 0.85),
-      borderRadius: BorderRadius.circular(AppRadii.md),
-      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: AppColors.border),
+      ),
+      elevation: 3,
       shadowColor: Colors.black26,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Facilities', style: _headerStyle),
-            const SizedBox(height: 6),
+            const SizedBox(height: 2),
             for (final category in FacilityCategory.values)
               _LegendRow(
                 icon: FacilityCategoryGlyph(
                   category: category,
                   color: category.legendColor,
-                  size: 14,
+                  size: 10,
                 ),
                 label: category.displayLabel,
               ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             const Text('Driving Time', style: _headerStyle),
-            const SizedBox(height: 6),
+            const SizedBox(height: 2),
             const _LegendRow(icon: _DashedLine(), label: 'Shortest Route'),
             for (final band in TimeBand.bands)
               _LegendRow(
                 icon: Container(
-                  width: 14,
-                  height: 14,
-                  color: Color(band.color),
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: Color(band.color),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
                 label: band.rangeLabel,
               ),
@@ -58,7 +66,7 @@ class MapLegend extends StatelessWidget {
 const _headerStyle = TextStyle(
   color: AppColors.primary,
   fontWeight: FontWeight.bold,
-  fontSize: 13,
+  fontSize: 10,
 );
 
 class _LegendRow extends StatelessWidget {
@@ -70,14 +78,19 @@ class _LegendRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.only(bottom: 2),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          SizedBox(width: 18, child: Center(child: icon)),
-          const SizedBox(width: 8),
+          SizedBox(width: 12, child: Center(child: icon)),
+          const SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+            style: const TextStyle(
+              fontSize: 8.5,
+              height: 1.2,
+              color: AppColors.textPrimary,
+            ),
           ),
         ],
       ),
@@ -91,14 +104,14 @@ class _DashedLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 16,
+      width: 12,
       height: 2,
       child: Row(
         children: List.generate(
           3,
           (index) => Expanded(
             child: Container(
-              margin: EdgeInsets.only(right: index == 2 ? 0 : 2),
+              margin: EdgeInsets.only(right: index == 2 ? 0 : 1.5),
               color: AppColors.primary,
             ),
           ),

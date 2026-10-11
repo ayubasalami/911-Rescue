@@ -289,7 +289,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   }
 
   void _clearPopup() {
-    _viewModel.clearPopups();
+    _viewModel.closePopup();
     _popupAnchor.value = null;
   }
 
@@ -324,7 +324,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
   Future<void> _closeGoToHelp() async {
     _viewModel.closeGoToHelp();
-    await _mapController.clearIsochroneAndRoute();
+    // Only the route line — an Access Analysis can still be active, and
+    // its isochrone overlay isn't this card's to remove.
+    await _mapController.clearRoute();
   }
 
   /// "Send SOS instead"'s "Who do you need?" confirmation, once a category
@@ -367,15 +369,6 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final origin = ref.read(homeMapViewModelProvider).value?.goToHelpOrigin;
     if (!mounted || origin == null) return;
     await _mapController.flyTo(origin);
-  }
-
-  void _viewGoToHelpSteps(List<DirectionsStep> steps) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      barrierColor: Colors.black26,
-      builder: (_) => TurnByTurnSheet(steps: steps),
-    );
   }
 
   Future<void> _call112() async {
@@ -640,6 +633,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _viewModel.clearPopups();
     await _viewModel.cancelAnalysis();
     _viewModel.closeSosMenu();
+    _viewModel.closeRoutePlanner();
     _popupAnchor.value = null;
     await _mapController.clearIsochroneAndRoute();
 
@@ -799,8 +793,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             ),
           if (state?.showLegend ?? true)
             Positioned(
-              left: 16,
-              bottom: 16 + bottomInset,
+              // The web's mobile `.info.legend`: 10px in, 160px up — clear
+              // of the bottom-docked directions card.
+              left: 10,
+              bottom: 160 + bottomInset,
               child: const MapLegend(),
             ),
           Positioned(
@@ -1071,28 +1067,33 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 ),
               ),
             ),
-            Positioned(
-              // Below the mode bar rather than beside it — sharing a row
-              // caused the mode bar's own width to be squeezed enough to
-              // overflow (4 chips need ~310px, the shared-row space left
-              // only ~280px). Also kept clear of the right-side map
-              // control button column (44px wide at right:16, so right:72
-              // leaves an 8px gap past its left edge).
-              top: 168 + topInset,
-              right: 72,
-              child: RouteActiveChip(
-                destinationName: state.goToHelpDestination!.name,
-                route: state.goToHelpRoute!,
-                onClose: _closeGoToHelp,
+            if (!state.routeChipDismissed)
+              Positioned(
+                // Below the mode bar rather than beside it — sharing a row
+                // caused the mode bar's own width to be squeezed enough to
+                // overflow (4 chips need ~310px, the shared-row space left
+                // only ~280px). Also kept clear of the right-side map
+                // control button column (44px wide at right:16, so right:72
+                // leaves an 8px gap past its left edge).
+                top: 168 + topInset,
+                right: 72,
+                child: RouteActiveChip(
+                  destinationName: state.goToHelpDestination!.name,
+                  route: state.goToHelpRoute!,
+                  // Hides just the chip — ending the route is the card's
+                  // confirmed Close.
+                  onClose: _viewModel.dismissRouteChip,
+                ),
               ),
-            ),
             Positioned(
-              left: 16,
-              right: 16,
-              bottom: 16 + bottomInset,
+              // Docked near-full-width like the web's mobile card; capped
+              // only so it doesn't stretch absurdly on tablets.
+              left: 8,
+              right: 8,
+              bottom: 8 + bottomInset,
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 320),
+                  constraints: const BoxConstraints(maxWidth: 480),
                   child: GoToHelpCard(
                     destination: state.goToHelpDestination!,
                     route: state.goToHelpRoute!,
@@ -1107,9 +1108,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     accuracyMeters: state.goToHelpAccuracyMeters,
                     voiceEnabled: state.goToHelpVoiceEnabled,
                     onStop: _viewModel.stopGoToHelpTracking,
-                    onViewSteps: () =>
-                        _viewGoToHelpSteps(state.goToHelpRoute!.steps),
                     sosConfirming: state.goToHelpSosConfirming,
+                    closeConfirming: state.goToHelpCloseConfirming,
+                    onRequestClose: _viewModel.requestCloseGoToHelp,
+                    onCancelClose: _viewModel.cancelCloseGoToHelp,
                     onCancelSosConfirm: _viewModel.closeGoToHelpSosConfirm,
                     onConfirmSos: _confirmSosInstead,
                   ),

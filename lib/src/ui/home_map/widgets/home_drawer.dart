@@ -268,7 +268,8 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
 
   void _onChanged(String query) {
     _debounce?.cancel();
-    if (query.trim().isEmpty) {
+    // Matches the web: no search under 2 characters.
+    if (query.trim().length < 2) {
       setState(() {
         _results = null;
         _loading = false;
@@ -284,13 +285,15 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
 
   Future<void> _search(String query) async {
     final trimmed = query.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.length < 2) return;
     setState(() {
       _loading = true;
       _searchFailed = false;
     });
     final result = await ref.read(facilityRepositoryProvider).search(trimmed);
     if (!mounted) return;
+    // Drop a stale response that landed after a newer search started.
+    if (_controller.text.trim() != trimmed) return;
     setState(() {
       _loading = false;
       switch (result) {

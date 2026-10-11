@@ -2,7 +2,18 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 
-enum AppButtonVariant { primary, success, danger, warning, secondary, neutral }
+enum AppButtonVariant {
+  primary,
+  success,
+  danger,
+  warning,
+  secondary,
+  neutral,
+
+  /// White with a light gray border and dark text — the web platform's
+  /// look for low-emphasis actions like "Voice directions" and "Close".
+  plain,
+}
 
 /// The app's single button style — every button should go through this
 /// instead of a bare `ElevatedButton`/`OutlinedButton`, so radius, padding,
@@ -61,6 +72,7 @@ class AppButton extends StatelessWidget {
     AppButtonVariant.warning => AppColors.warning,
     AppButtonVariant.secondary => AppColors.primary,
     AppButtonVariant.neutral => AppColors.textSecondary,
+    AppButtonVariant.plain => AppColors.textPrimary,
   };
 
   @override
@@ -82,6 +94,20 @@ class AppButton extends StatelessWidget {
     // A muted, informational look — "How to Use This Map," "Data Sources &
     // Credits" — distinct from an outlined [_color] button since it's
     // always this same gray regardless of [filled].
+    if (variant == AppButtonVariant.plain) {
+      return _build(
+        outlined: true,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: AppColors.backgroundSurface,
+          foregroundColor: AppColors.textPrimary,
+          side: const BorderSide(color: AppColors.border),
+          shape: _shape,
+          padding: _resolvedPadding,
+          textStyle: _resolvedTextStyle,
+        ),
+      );
+    }
+
     if (variant == AppButtonVariant.neutral) {
       return _build(
         outlined: true,

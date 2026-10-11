@@ -28,8 +28,10 @@ class GoToHelpCard extends StatelessWidget {
     this.accuracyMeters,
     this.voiceEnabled = false,
     this.sosConfirming = false,
+    this.closeConfirming = false,
+    this.onRequestClose,
+    this.onCancelClose,
     this.onStop,
-    this.onViewSteps,
     this.onCancelSosConfirm,
     this.onConfirmSos,
   });
@@ -45,9 +47,8 @@ class GoToHelpCard extends StatelessWidget {
   final VoidCallback onClose;
 
   /// Whether "Start" has been tapped — swaps in the live-navigation layout
-  /// (FOLLOWING YOU header, GPS signal, Stop) in place of the static
-  /// turn-by-turn preview. [onStop] and [onViewSteps] are required whenever
-  /// this is true.
+  /// (FOLLOWING YOU header, GPS signal, Stop) in place of the preview's
+  /// Start button. [onStop] is required whenever this is true.
   final bool tracking;
 
   /// The live GPS fix's accuracy while [tracking], for the "Weak/Good GPS
@@ -63,8 +64,14 @@ class GoToHelpCard extends StatelessWidget {
   /// until [onConfirmSos] or [onCancelSosConfirm].
   final bool sosConfirming;
 
+  /// Whether "Close" was tapped and the card is asking "Stop routing and
+  /// clear the map?" — [onClose] is the confirmed teardown, [onRequestClose]
+  /// opens the question, [onCancelClose] is "Keep route".
+  final bool closeConfirming;
+  final VoidCallback? onRequestClose;
+  final VoidCallback? onCancelClose;
+
   final VoidCallback? onStop;
-  final VoidCallback? onViewSteps;
   final VoidCallback? onCancelSosConfirm;
   final ValueChanged<FacilityCategory>? onConfirmSos;
 
@@ -78,9 +85,9 @@ class GoToHelpCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppRadii.md),
-          border: Border.all(color: AppColors.primary, width: 1.5),
+          border: Border.all(color: AppColors.primary, width: 2),
         ),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: tracking
             ? (expanded ? _buildTrackingExpanded() : _buildTrackingMinimized())
             : (expanded ? _buildExpanded() : _buildMinimized()),
@@ -238,8 +245,8 @@ class GoToHelpCard extends StatelessWidget {
                   Text(
                     destination.name,
                     style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary,
                     ),
                   ),
@@ -247,89 +254,40 @@ class GoToHelpCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            InkWell(
-              onTap: onToggleExpanded,
-              borderRadius: BorderRadius.circular(AppRadii.sm),
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: AppColors.backgroundCanvas,
-                  borderRadius: BorderRadius.circular(AppRadii.sm),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: const Icon(
-                  Icons.expand_more,
-                  size: 18,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            InkWell(
-              onTap: onClose,
-              borderRadius: BorderRadius.circular(AppRadii.sm),
-              child: const Padding(
-                padding: EdgeInsets.all(6),
-                child: Icon(
-                  Icons.close,
-                  size: 18,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
+            _buildCollapseButton(),
           ],
         ),
-        const SizedBox(height: 8),
-        const Divider(height: 1),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    route.formattedDistance,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: route.formattedDistance,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
                     ),
-                  ),
-                  const Text(
-                    'to go',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
+                    const TextSpan(
+                      text: ' to go',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  route.formattedArrival,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const Text(
-                  'arrive',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
+            _buildArriveColumn(),
           ],
         ),
         if (accuracyMeters != null) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
           Text(
             _gpsSignalLabel(accuracyMeters!),
             style: const TextStyle(
@@ -339,82 +297,85 @@ class GoToHelpCard extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 8),
-        if (sosConfirming)
-          _buildSosConfirm()
-        else ...[
-          Row(
-            spacing: 6,
-            children: [
-              Expanded(
-                child: AppButton(
-                  label: '📞 Call 112',
-                  variant: AppButtonVariant.danger,
-                  onPressed: onCall112,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 12,
-                  ),
-                  fontSize: 13,
-                ),
-              ),
-              Expanded(
-                child: AppButton(
-                  label: 'Stop',
-                  variant: AppButtonVariant.neutral,
-                  onPressed: onStop,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 12,
-                  ),
-                  fontSize: 13,
-                ),
-              ),
-            ],
+        const Divider(height: 1),
+        _buildStepList(),
+        const SizedBox(height: 12),
+        _buildActions(
+          primary: AppButton(
+            label: 'Stop',
+            variant: AppButtonVariant.plain,
+            onPressed: onStop,
+            padding: _buttonPadding,
+            fontSize: 13,
           ),
-          const SizedBox(height: 8),
-          Row(
-            spacing: 6,
-            children: [
-              Expanded(
-                child: AppButton(
-                  label: '☰ Steps',
-                  variant: AppButtonVariant.neutral,
-                  onPressed: onViewSteps,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 12,
-                  ),
-                  fontSize: 13,
-                ),
-              ),
-              Expanded(
-                child: AppButton(
-                  label: voiceEnabled ? '🎙️ Voice on' : '🎙️ Voice off',
-                  variant: AppButtonVariant.neutral,
-                  onPressed: onVoiceDirections,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 12,
-                  ),
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: AppButton(
-              label: '🆘 Send SOS instead',
-              variant: AppButtonVariant.danger,
-              filled: false,
-              onPressed: onSendSosInstead,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-              fontSize: 13,
-            ),
-          ),
-        ],
+        ),
       ],
+    );
+  }
+
+  /// The numbered turn-by-turn list — shown inline in both the preview and
+  /// the navigating layouts, matching the web card. While tracking, [route]
+  /// is re-fetched from the live position, so step 1 is always "what to do
+  /// now".
+  Widget _buildStepList() {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 150),
+      child: ListView.separated(
+        shrinkWrap: true,
+        // Without an explicit padding, ListView adds the screen's safe-area
+        // inset (the notch) on its scroll axis — the gap above step 1.
+        padding: const EdgeInsets.only(top: 8),
+        itemCount: route.steps.length,
+        separatorBuilder: (_, _) => const Divider(height: 16),
+        itemBuilder: (context, index) {
+          final step = route.steps[index];
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundCanvas,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${index + 1}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      step.instruction,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    Text(
+                      '${step.distanceMeters.round()} m',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -505,7 +466,7 @@ class GoToHelpCard extends StatelessWidget {
                         TextSpan(
                           text: route.formattedDuration,
                           style: const TextStyle(
-                            fontSize: 17,
+                            fontSize: 20,
                             fontWeight: FontWeight.w700,
                             color: AppColors.textPrimary,
                           ),
@@ -526,187 +487,167 @@ class GoToHelpCard extends StatelessWidget {
                     style: const TextStyle(
                       color: AppColors.textPrimary,
                       fontSize: 13,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                const Text(
-                  'Arrive',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                Text(
-                  route.formattedArrival,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 6),
-            InkWell(
-              onTap: onToggleExpanded,
-              borderRadius: BorderRadius.circular(AppRadii.sm),
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: AppColors.backgroundCanvas,
-                  borderRadius: BorderRadius.circular(AppRadii.sm),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: const Icon(
-                  Icons.expand_more,
-                  size: 18,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            InkWell(
-              onTap: onClose,
-              borderRadius: BorderRadius.circular(AppRadii.sm),
-              child: const Padding(
-                padding: EdgeInsets.all(6),
-                child: Icon(
-                  Icons.close,
-                  size: 18,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
+            _buildArriveColumn(),
+            const SizedBox(width: 8),
+            _buildCollapseButton(),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         const Divider(height: 1),
-        const SizedBox(height: 8),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 140),
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: route.steps.length,
-            separatorBuilder: (_, _) => const Divider(height: 16),
-            itemBuilder: (context, index) {
-              final step = route.steps[index];
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 22,
-                    height: 22,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: AppColors.backgroundCanvas,
-                      borderRadius: BorderRadius.circular(AppRadii.sm),
-                    ),
-                    child: Text(
-                      '${index + 1}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          step.instruction,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          '${step.distanceMeters.round()} m',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              );
-            },
+        _buildStepList(),
+        const SizedBox(height: 12),
+        _buildActions(
+          primary: AppButton(
+            label: 'Start',
+            onPressed: onStart,
+            padding: _buttonPadding,
+            fontSize: 13,
           ),
         ),
-        const SizedBox(height: 10),
+      ],
+    );
+  }
+
+  static const _buttonPadding = EdgeInsets.symmetric(
+    horizontal: 8,
+    vertical: 11,
+  );
+
+  Widget _buildArriveColumn() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        const Text(
+          'Arrive',
+          style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+        ),
+        Text(
+          route.formattedArrival,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCollapseButton() {
+    return InkWell(
+      onTap: onToggleExpanded,
+      borderRadius: BorderRadius.circular(AppRadii.sm),
+      child: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppColors.backgroundCanvas,
+          borderRadius: BorderRadius.circular(AppRadii.sm),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: const Icon(
+          Icons.arrow_drop_down,
+          size: 22,
+          color: AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+
+  /// The web card's button stack: primary + "Send SOS instead" side by
+  /// side, then full-width Voice, Call 112 and Close. While "Send SOS
+  /// instead" is confirming, its category picker replaces the first two
+  /// rows — Call 112 and Close stay reachable throughout.
+  Widget _buildActions({required Widget primary}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         if (sosConfirming)
           _buildSosConfirm()
         else ...[
           Row(
-            spacing: 6,
+            spacing: 8,
             children: [
-              Expanded(
-                child: AppButton(
-                  label: 'Start',
-                  onPressed: onStart,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 12,
-                  ),
-                  fontSize: 13,
-                ),
-              ),
+              Expanded(child: primary),
               Expanded(
                 child: AppButton(
                   label: 'Send SOS instead',
                   variant: AppButtonVariant.danger,
                   filled: false,
                   onPressed: onSendSosInstead,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 12,
-                  ),
+                  padding: _buttonPadding,
                   fontSize: 13,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
+          AppButton(
+            label: voiceEnabled
+                ? '🔊 Voice directions on'
+                : '🔇 Voice directions off',
+            variant: AppButtonVariant.plain,
+            onPressed: onVoiceDirections,
+            padding: _buttonPadding,
+            fontSize: 13,
+          ),
         ],
-        Row(
-          spacing: 6,
-          children: [
-            if (!sosConfirming)
+        const SizedBox(height: 8),
+        AppButton(
+          label: '📞 Call 112',
+          variant: AppButtonVariant.danger,
+          onPressed: onCall112,
+          padding: _buttonPadding,
+          fontSize: 13,
+        ),
+        const SizedBox(height: 8),
+        if (closeConfirming) ...[
+          const Text(
+            'Stop routing and clear the map?',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            spacing: 8,
+            children: [
               Expanded(
                 child: AppButton(
-                  label: voiceEnabled ? '🎙️ Voice on' : '🎙️ Voice off',
-                  variant: AppButtonVariant.neutral,
-                  onPressed: onVoiceDirections,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 12,
-                  ),
+                  label: 'Yes, clear it',
+                  variant: AppButtonVariant.danger,
+                  onPressed: onClose,
+                  padding: _buttonPadding,
                   fontSize: 13,
                 ),
               ),
-            Expanded(
-              child: AppButton(
-                label: '📞 Call 112',
-                variant: AppButtonVariant.danger,
-                onPressed: onCall112,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 12,
+              Expanded(
+                child: AppButton(
+                  label: 'Keep route',
+                  variant: AppButtonVariant.plain,
+                  onPressed: onCancelClose,
+                  padding: _buttonPadding,
+                  fontSize: 13,
                 ),
-                fontSize: 13,
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ] else
+          AppButton(
+            label: 'Close',
+            variant: AppButtonVariant.plain,
+            onPressed: onRequestClose,
+            padding: _buttonPadding,
+            fontSize: 13,
+          ),
       ],
     );
   }

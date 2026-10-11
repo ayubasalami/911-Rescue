@@ -404,6 +404,8 @@ class MapAnnotationController {
     ]);
   }
 
+  static const _routeGreen = Color(0xFF00AA55);
+
   Future<void> renderRoute(List<GeoPoint> points) async {
     final manager = _polylineManager;
     if (manager == null) return;
@@ -416,17 +418,18 @@ class MapAnnotationController {
               mapbox.Position(point.longitude, point.latitude),
           ],
         ),
-        // Deliberately not AppColors.success: the Live Traffic layer paints
-        // low-congestion roads a near-identical green (#2ECC71 vs this
-        // green's 0xFF22C55E), and a route running along a low-congestion
-        // road becomes visually indistinguishable from the traffic-colored
-        // road itself — which reads as the route "continuing" along the
-        // full street in both directions instead of stopping at the origin.
-        lineColor: AppColors.primary.toARGB32(),
+        // The web's `--accent-green` (#0a5) at weight 5, opacity 0.9. Note
+        // the Live Traffic layer paints low-congestion roads a similar
+        // green (#2ECC71), so with traffic on, a route along a clear road
+        // can blend into it.
+        lineColor: _routeGreen.toARGB32(),
         lineWidth: 5,
+        lineOpacity: 0.9,
       ),
     );
   }
+
+  Future<void> clearRoute() async => _polylineManager?.deleteAll();
 
   Future<void> clearIsochroneAndRoute() async {
     await _polygonManager?.deleteAll();

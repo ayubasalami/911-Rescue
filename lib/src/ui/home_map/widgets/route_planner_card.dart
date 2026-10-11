@@ -3,22 +3,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
-import '../../../data/models/facility.dart';
 import '../../../data/models/route_point.dart';
 import '../../../data/repositories/facility_repository.dart';
 import '../../../data/repositories/location_repository.dart';
+import '../../../data/services/place_search_service.dart';
 import '../../core/widgets/app_button.dart';
 import 'go_to_help_mode_bar.dart';
 
 /// Top-left "Route Planner" panel — free-form origin/destination search,
 /// matching the web platform's own route planner rather than the
-/// facility-only "Get Directions" flow. Stays open after "Get Directions"
-/// (confirmed live: closing this panel doesn't cancel the route it
-/// started), so the caller controls visibility entirely via [onClose] /
-/// whatever shows this widget.
+/// facility-only "Get Directions" flow. The caller controls visibility —
+/// [HomeMapViewModel.startRoutePlan] closes it once a route loads.
 class RoutePlannerCard extends ConsumerStatefulWidget {
   const RoutePlannerCard({
     super.key,
@@ -159,8 +156,7 @@ class _RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
                 controller: _originController,
                 hint: 'Type or tap map to set origin',
                 dotColor: AppColors.success,
-                onSelected: (facility) =>
-                    _setOrigin(RoutePoint.fromFacility(facility)),
+                onSelected: _setOrigin,
                 trailing: InkWell(
                   onTap: () async {
                     final result = await ref
@@ -221,13 +217,13 @@ class _RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
                 controller: _destinationController,
                 hint: 'Type or tap map to set destination',
                 dotColor: AppColors.danger,
-                onSelected: (facility) =>
-                    _setDestination(RoutePoint.fromFacility(facility)),
+                onSelected: _setDestination,
               ),
               const SizedBox(height: 10),
               GoToHelpModeBar(
                 selectedMode: widget.selectedMode,
                 onModeSelected: widget.onModeSelected,
+                compact: true,
               ),
               const SizedBox(height: 10),
               SizedBox(
@@ -258,7 +254,7 @@ class _PlaceSearchField extends ConsumerStatefulWidget {
   final TextEditingController controller;
   final String hint;
   final Color dotColor;
-  final ValueChanged<Facility> onSelected;
+  final ValueChanged<RoutePoint> onSelected;
   final Widget? trailing;
 
   @override
@@ -267,7 +263,7 @@ class _PlaceSearchField extends ConsumerStatefulWidget {
 
 class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
   Timer? _debounce;
-  List<Facility>? _results;
+  List<RoutePoint>? _results;
   bool _loading = false;
 
   @override
@@ -278,8 +274,13 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
 
   void _onChanged(String query) {
     _debounce?.cancel();
-    if (query.trim().isEmpty) {
-      setState(() => _results = null);
+    // Matches the web: nothing is searched until 2 characters — a single
+    // letter matches almost everything and was firing on the first tap.
+    if (query.trim().length < 2) {
+      setState(() {
+        _results = null;
+        _loading = false;
+      });
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 400), () => _search(query));
@@ -287,23 +288,31 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
 
   Future<void> _search(String query) async {
     final trimmed = query.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.length < 2) return;
     setState(() => _loading = true);
-    final result = await ref.read(facilityRepositoryProvider).search(trimmed);
+    // Facility matches first, then general places from OpenStreetMap —
+    // same order as the web. Either source failing just drops its half.
+    final (facilities, places) = await (
+      ref.read(facilityRepositoryProvider).search(trimmed),
+      ref.read(placeSearchServiceProvider).search(trimmed),
+    ).wait;
     if (!mounted) return;
+    // A slower, older request can land after a newer one — drop it rather
+    // than overwrite the newer results with stale ones.
+    if (widget.controller.text.trim() != trimmed) return;
     setState(() {
       _loading = false;
-      _results = switch (result) {
-        Ok(:final value) => value,
-        Err() => const [],
-      };
+      _results = [
+        ...?facilities.valueOrNull?.map(RoutePoint.fromFacility),
+        ...?places.valueOrNull,
+      ];
     });
   }
 
-  void _select(Facility facility) {
+  void _select(RoutePoint point) {
     _debounce?.cancel();
     setState(() => _results = null);
-    widget.onSelected(facility);
+    widget.onSelected(point);
   }
 
   @override
@@ -388,16 +397,16 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
                   shrinkWrap: true,
                   padding: EdgeInsets.zero,
                   children: [
-                    for (final facility in _results!)
+                    for (final point in _results!)
                       InkWell(
-                        onTap: () => _select(facility),
+                        onTap: () => _select(point),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
                             vertical: 8,
                           ),
                           child: Text(
-                            facility.name,
+                            point.name,
                             style: const TextStyle(fontSize: 13),
                           ),
                         ),

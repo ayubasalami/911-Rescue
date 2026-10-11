@@ -85,6 +85,8 @@ class HomeMapState {
     this.goToHelpAccuracyMeters,
     this.goToHelpVoiceEnabled = false,
     this.goToHelpSosConfirming = false,
+    this.goToHelpCloseConfirming = false,
+    this.routeChipDismissed = false,
     this.errorMessage,
   });
 
@@ -136,10 +138,8 @@ class HomeMapState {
   final bool showGetHelpFast;
 
   /// Whether the top-left Route Planner input panel (free-form origin +
-  /// destination search) is open — independent of whether a route is
-  /// actually active, matching the web platform: closing the panel doesn't
-  /// cancel an active route, and the panel stays open after "Get
-  /// Directions" so its own result chip can show alongside it.
+  /// destination search) is open. Closes itself once its "Get Directions"
+  /// produces a route; closing it never cancels an active route.
   final bool showRoutePlanner;
 
   /// The point the active route leads to, and the route itself — non-null
@@ -184,6 +184,16 @@ class HomeMapState {
   /// clearing the route and handing off into a ping.
   final bool goToHelpSosConfirming;
 
+  /// Whether the card's "Close" has been tapped and is showing its "Stop
+  /// routing and clear the map?" confirmation — matches the web platform's
+  /// second chance before an active route is actually torn down.
+  final bool goToHelpCloseConfirming;
+
+  /// Whether the top-right "Route active" chip has been dismissed. Its X
+  /// only hides the chip; ending the route is the card's (confirmed)
+  /// Close. Reset whenever a new route starts.
+  final bool routeChipDismissed;
+
   /// A one-shot message for the View to surface (e.g. via SnackBar), then
   /// clear with [HomeMapViewModel.clearErrorMessage] so it isn't shown
   /// again on the next rebuild.
@@ -221,6 +231,8 @@ class HomeMapState {
     Object? goToHelpAccuracyMeters = _unset,
     bool? goToHelpVoiceEnabled,
     bool? goToHelpSosConfirming,
+    bool? goToHelpCloseConfirming,
+    bool? routeChipDismissed,
     Object? errorMessage = _unset,
   }) {
     return HomeMapState(
@@ -280,6 +292,9 @@ class HomeMapState {
       goToHelpVoiceEnabled: goToHelpVoiceEnabled ?? this.goToHelpVoiceEnabled,
       goToHelpSosConfirming:
           goToHelpSosConfirming ?? this.goToHelpSosConfirming,
+      goToHelpCloseConfirming:
+          goToHelpCloseConfirming ?? this.goToHelpCloseConfirming,
+      routeChipDismissed: routeChipDismissed ?? this.routeChipDismissed,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
@@ -403,7 +418,6 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         ),
         selectedFacility: null,
         showGetHelpFast: false,
-        showRoutePlanner: false,
         goToHelpDestination: null,
         goToHelpRoute: null,
         goToHelpOrigin: null,
@@ -430,7 +444,6 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         selectedFilter: null,
         originSelection: null,
         showGetHelpFast: false,
-        showRoutePlanner: false,
         goToHelpDestination: null,
         goToHelpRoute: null,
         goToHelpOrigin: null,
@@ -442,6 +455,21 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     );
   }
 
+  /// A popup's own close button — closes just the facility / origin / Get
+  /// Help Fast card. Unlike [clearPopups], leaves any active route, the
+  /// Route Planner and the analysis alone: those are separate features
+  /// with their own close controls.
+  void closePopup() => _update(
+    (s) => s.copyWith(
+      originSelection: null,
+      selectedFacility: null,
+      showGetHelpFast: false,
+    ),
+  );
+
+  /// Tears down every popup *and* the active route — for "start something
+  /// new" transitions (running an analysis, the clear-map button), not for
+  /// a single card's close button; that's [closePopup].
   void clearPopups() {
     _cancelTracking();
     _update(
@@ -449,7 +477,6 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         originSelection: null,
         selectedFacility: null,
         showGetHelpFast: false,
-        showRoutePlanner: false,
         goToHelpDestination: null,
         goToHelpRoute: null,
         goToHelpOrigin: null,
@@ -468,6 +495,18 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
 
   void closeGoToHelpSosConfirm() =>
       _update((s) => s.copyWith(goToHelpSosConfirming: false));
+
+  /// The card's "Close" — asks first rather than ending the route outright.
+  void requestCloseGoToHelp() =>
+      _update((s) => s.copyWith(goToHelpCloseConfirming: true));
+
+  /// "Keep route" — backs out of the close confirmation.
+  void cancelCloseGoToHelp() =>
+      _update((s) => s.copyWith(goToHelpCloseConfirming: false));
+
+  /// The "Route active" chip's X — hides only the chip.
+  void dismissRouteChip() =>
+      _update((s) => s.copyWith(routeChipDismissed: true));
 
   /// Swaps the origin popup's content to "Get Help Fast," anchored at the
   /// same map point — matches the web platform, where this replaces the
@@ -689,6 +728,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpDestination: destination,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
+        goToHelpCloseConfirming: false,
+        routeChipDismissed: false,
         goToHelpLoading: false,
         goToHelpOrigin: origin,
         goToHelpFollowsUser: originSelection.followsUser,
@@ -727,6 +768,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpDestination: RoutePoint.fromFacility(facility),
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
+        goToHelpCloseConfirming: false,
+        routeChipDismissed: false,
         goToHelpLoading: false,
         goToHelpOrigin: origin,
         goToHelpFollowsUser: followsUser,
@@ -773,10 +816,15 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpDestination: destination,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
+        goToHelpCloseConfirming: false,
+        routeChipDismissed: false,
         goToHelpLoading: false,
         goToHelpOrigin: originPoint,
         goToHelpFollowsUser: originFollowsUser,
         showGetHelpFast: false,
+        // The planner's job is done once a route exists — only closed on
+        // success, so a failed fetch leaves its inputs there to retry.
+        showRoutePlanner: false,
         originSelection: null,
         selectedFacility: null,
         activeAnalysis: null,
@@ -840,6 +888,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
         goToHelpSosConfirming: false,
+        goToHelpCloseConfirming: false,
+        routeChipDismissed: false,
       ),
     );
   }
