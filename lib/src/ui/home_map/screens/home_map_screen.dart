@@ -109,6 +109,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// open doesn't also auto-start a ping.
   FacilityCategory? _pendingSosCategory;
 
+  /// Set while the Route Planner is waiting for a map tap to fill one of
+  /// its fields (the web's "Tap anywhere on the map…" mode). The planner
+  /// is hidden but kept alive meanwhile, so what's typed isn't lost.
+  PlannerEndpoint? _plannerDropTarget;
+  final _routePlannerKey = GlobalKey<RoutePlannerCardState>();
+
   /// Owned here (not by [HomeDrawer]) so the map's side-button search icon
   /// can request focus on the drawer's search field from outside it.
   final FocusNode _searchFocusNode = FocusNode();
@@ -206,13 +212,43 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       latitude: coordinates.lat.toDouble(),
       longitude: coordinates.lng.toDouble(),
     );
+    if (_awaitingPlannerPin) {
+      _placePlannerPin(
+        RoutePoint(
+          name: '📍 Dropped Pin',
+          latitude: point.latitude,
+          longitude: point.longitude,
+        ),
+      );
+      return;
+    }
+    // Like the web, a plain map tap does nothing while a route is on the
+    // map — dropping a pin would clear the route and its card (even
+    // minimized) just because the user touched the map.
+    if (_goToHelpActive) return;
     unawaited(_selectDroppedPin(point));
   }
 
-  /// A Go to Help route is currently drawn and its card showing — tapping
-  /// the map or another facility still selects as usual (which exits this
-  /// route, same as before), but shouldn't fly the camera away from the
-  /// route overview it was just framed into.
+  /// Whether a map tap should go to the Route Planner instead — only while
+  /// it's actually open, so a planner closed some other way mid-drop
+  /// doesn't swallow the next tap.
+  bool get _awaitingPlannerPin =>
+      _plannerDropTarget != null &&
+      (ref.read(homeMapViewModelProvider).value?.showRoutePlanner ?? false);
+
+  /// Hands a map tap to the Route Planner field that asked for it, then
+  /// brings the planner back.
+  void _placePlannerPin(RoutePoint point) {
+    final target = _plannerDropTarget;
+    if (target == null) return;
+    setState(() => _plannerDropTarget = null);
+    _routePlannerKey.currentState?.placeDroppedPin(target, point);
+  }
+
+  /// A Go to Help route is currently drawn and its card showing (expanded
+  /// or minimized). A plain map tap is ignored meanwhile (see
+  /// [_onMapTapped]); selecting a facility still works and exits the route,
+  /// but shouldn't fly the camera away from the route overview.
   bool get _goToHelpActive =>
       ref.read(homeMapViewModelProvider).value?.goToHelpRoute != null;
 
@@ -238,6 +274,13 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   Future<void> _onFacilityTapped(mapbox.PointAnnotation annotation) async {
     final facility = _mapController.facilityForAnnotation(annotation.id);
     if (facility == null) return;
+    // Markers are dense in Lagos, so a tap meant for the map often lands on
+    // one — use the facility itself as the dropped point rather than
+    // opening its popup and leaving the planner waiting.
+    if (_awaitingPlannerPin) {
+      _placePlannerPin(RoutePoint.fromFacility(facility));
+      return;
+    }
     await _selectFacility(facility);
   }
 
@@ -755,6 +798,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         ).showSnackBar(SnackBar(content: Text(message)));
         _viewModel.clearErrorMessage();
       }
+      // The planner closed some other way while waiting for a pin — drop
+      // the wait too, or reopening it would start hidden behind the banner.
+      if (_plannerDropTarget != null &&
+          !(next.value?.showRoutePlanner ?? false)) {
+        setState(() => _plannerDropTarget = null);
+      }
     });
 
     final showFloatingAnalysisControls =
@@ -846,22 +895,40 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             Positioned(
               top: 58 + topInset,
               left: 16,
-              child: RoutePlannerCard(
-                onClose: _viewModel.closeRoutePlanner,
-                selectedMode:
-                    state?.selectedTransportMode ?? TransportMode.driving,
-                onModeSelected: _viewModel.setSelectedMode,
-                loading: state?.goToHelpLoading ?? false,
-                onGetDirections:
-                    (origin, destination, {required originFollowsUser}) {
-                      unawaited(
-                        _startRoutePlan(
-                          origin,
-                          destination,
-                          originFollowsUser: originFollowsUser,
-                        ),
-                      );
-                    },
+              child: Offstage(
+                offstage: _plannerDropTarget != null,
+                child: RoutePlannerCard(
+                  key: _routePlannerKey,
+                  onClose: _viewModel.closeRoutePlanner,
+                  onDropPin: (target) =>
+                      setState(() => _plannerDropTarget = target),
+                  selectedMode:
+                      state?.selectedTransportMode ?? TransportMode.driving,
+                  onModeSelected: _viewModel.setSelectedMode,
+                  loading: state?.goToHelpLoading ?? false,
+                  onGetDirections:
+                      (origin, destination, {required originFollowsUser}) {
+                        unawaited(
+                          _startRoutePlan(
+                            origin,
+                            destination,
+                            originFollowsUser: originFollowsUser,
+                          ),
+                        );
+                      },
+                ),
+              ),
+            ),
+          if ((state?.showRoutePlanner ?? false) && _plannerDropTarget != null)
+            Positioned(
+              top: topInset + 8,
+              left: 16,
+              right: 16,
+              child: Center(
+                child: _DropPinBanner(
+                  target: _plannerDropTarget!,
+                  onCancel: () => setState(() => _plannerDropTarget = null),
+                ),
               ),
             ),
           ValueListenableBuilder<double>(
@@ -1332,4 +1399,54 @@ class _PingRadarPulseState extends State<_PingRadarPulse>
       ),
     );
   }
+}
+
+/// The web's drop-pin banner: a blue pill across the top while the Route
+/// Planner waits for a map tap.
+class _DropPinBanner extends StatelessWidget {
+  const _DropPinBanner({required this.target, required this.onCancel});
+
+  final PlannerEndpoint target;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: AppColors.primary,
+    elevation: 6,
+    shadowColor: Colors.black38,
+    borderRadius: BorderRadius.circular(30),
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(18, 8, 8, 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              '📍 Tap anywhere on the map to set your ${target.label} point.',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          TextButton(
+            onPressed: onCancel,
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.white.withValues(alpha: 0.2),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              minimumSize: const Size(0, 30),
+              shape: const StadiumBorder(),
+            ),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }

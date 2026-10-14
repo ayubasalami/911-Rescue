@@ -14,6 +14,17 @@ import '../../../data/services/place_search_service.dart';
 import '../../core/widgets/app_button.dart';
 import 'go_to_help_mode_bar.dart';
 
+/// Which planner field a dropped map pin fills — the web's `start`/`end`.
+enum PlannerEndpoint {
+  origin('start'),
+  destination('end');
+
+  const PlannerEndpoint(this.label);
+
+  /// The web's wording, as in "set your start point".
+  final String label;
+}
+
 /// Top-left "Route Planner" panel — free-form origin/destination search,
 /// matching the web platform's own route planner rather than the
 /// facility-only "Get Directions" flow. The caller controls visibility —
@@ -25,10 +36,15 @@ class RoutePlannerCard extends ConsumerStatefulWidget {
     required this.onGetDirections,
     required this.selectedMode,
     required this.onModeSelected,
+    required this.onDropPin,
     this.loading = false,
   });
 
   final VoidCallback onClose;
+
+  /// A field's 📍 button — the screen enters "tap the map" mode and hands
+  /// the tapped point back through [RoutePlannerCardState.placeDroppedPin].
+  final ValueChanged<PlannerEndpoint> onDropPin;
 
   /// `originFollowsUser` is true only when the origin came from "Use
   /// current location" — see [HomeMapViewModel.startRoutePlan].
@@ -47,10 +63,10 @@ class RoutePlannerCard extends ConsumerStatefulWidget {
   final bool loading;
 
   @override
-  ConsumerState<RoutePlannerCard> createState() => _RoutePlannerCardState();
+  ConsumerState<RoutePlannerCard> createState() => RoutePlannerCardState();
 }
 
-class _RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
+class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
   final _originController = TextEditingController();
   final _destinationController = TextEditingController();
   RoutePoint? _origin;
@@ -77,6 +93,38 @@ class _RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
       _destination = point;
       _destinationController.text = point.name;
     });
+  }
+
+  /// A pin dropped on the map for [endpoint]. Like the web, once both ends
+  /// are set this goes straight to the route — no extra "Get Directions"
+  /// tap.
+  void placeDroppedPin(PlannerEndpoint endpoint, RoutePoint point) {
+    switch (endpoint) {
+      case PlannerEndpoint.origin:
+        _setOrigin(point);
+      case PlannerEndpoint.destination:
+        _setDestination(point);
+    }
+    if (_origin != null && _destination != null && !widget.loading) _submit();
+  }
+
+  Future<void> _useCurrentLocation() async {
+    final result = await ref.read(locationRepositoryProvider).currentPosition();
+    final position = result.position;
+    if (!mounted) return;
+    // The web falls back to dropping a pin when GPS isn't available.
+    if (position == null) {
+      widget.onDropPin(PlannerEndpoint.origin);
+      return;
+    }
+    _setOrigin(
+      RoutePoint(
+        name: 'Your Location',
+        latitude: position.latitude,
+        longitude: position.longitude,
+      ),
+      followsUser: true,
+    );
   }
 
   void _swap() {
@@ -159,31 +207,25 @@ class _RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
                 hint: 'Type or tap map to set origin',
                 dotColor: AppColors.success,
                 onSelected: _setOrigin,
-                trailing: InkWell(
-                  onTap: () async {
-                    final result = await ref
-                        .read(locationRepositoryProvider)
-                        .currentPosition();
-                    final position = result.position;
-                    if (position == null || !context.mounted) return;
-                    _setOrigin(
-                      RoutePoint(
-                        name: 'Your Location',
-                        latitude: position.latitude,
-                        longitude: position.longitude,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InkWell(
+                      onTap: _useCurrentLocation,
+                      borderRadius: BorderRadius.circular(AppRadii.full),
+                      child: const Padding(
+                        padding: EdgeInsets.all(6),
+                        child: Icon(
+                          Icons.my_location,
+                          size: 18,
+                          color: AppColors.primary,
+                        ),
                       ),
-                      followsUser: true,
-                    );
-                  },
-                  borderRadius: BorderRadius.circular(AppRadii.full),
-                  child: const Padding(
-                    padding: EdgeInsets.all(6),
-                    child: Icon(
-                      Icons.my_location,
-                      size: 18,
-                      color: AppColors.primary,
                     ),
-                  ),
+                    _DropPinButton(
+                      onTap: () => widget.onDropPin(PlannerEndpoint.origin),
+                    ),
+                  ],
                 ),
               ),
               Row(
@@ -220,6 +262,9 @@ class _RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
                 hint: 'Type or tap map to set destination',
                 dotColor: AppColors.danger,
                 onSelected: _setDestination,
+                trailing: _DropPinButton(
+                  onTap: () => widget.onDropPin(PlannerEndpoint.destination),
+                ),
               ),
               const SizedBox(height: 10),
               GoToHelpModeBar(
@@ -242,6 +287,27 @@ class _RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
       ),
     );
   }
+}
+
+/// The web's `.rp-pin-btn`: a muted map-pin icon after the field.
+class _DropPinButton extends StatelessWidget {
+  const _DropPinButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(AppRadii.full),
+    child: const Padding(
+      padding: EdgeInsets.fromLTRB(3, 6, 8, 6),
+      child: Icon(
+        Icons.location_on_outlined,
+        size: 17,
+        color: AppColors.textSecondary,
+      ),
+    ),
+  );
 }
 
 class _PlaceSearchField extends ConsumerStatefulWidget {
