@@ -8,6 +8,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/analytics_events.dart';
+import '../../../core/env.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
@@ -30,6 +31,7 @@ import '../widgets/facility_summary_sheet.dart';
 import '../widgets/go_to_help_card.dart';
 import '../widgets/go_to_help_mode_bar.dart';
 import '../widgets/home_drawer.dart';
+import '../widgets/how_to_use_dialog.dart';
 import '../widgets/home_map_header.dart';
 import '../widgets/map_control_button.dart';
 import '../widgets/map_control_icons.dart';
@@ -764,6 +766,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       _facilitiesToRender(state),
       state?.selectedFilter,
     );
+    // The web opens the tutorial on a first visit shortly after the map is
+    // ready, rather than over a blank screen.
+    if (!isTestEnvironment) {
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      if (mounted) unawaited(showHowToUseIfFirstVisit(context));
+    }
   }
 
   @override

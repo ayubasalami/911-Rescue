@@ -15,6 +15,8 @@ import '../../../data/services/place_search_service.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/facility_category_glyph.dart';
 import '../view_model/home_map_view_model.dart';
+import 'data_sources_dialog.dart';
+import 'how_to_use_dialog.dart';
 import 'map_legend.dart' show FacilityCategoryLegend;
 import 'transport_mode_button.dart';
 
@@ -177,9 +179,8 @@ class HomeDrawer extends ConsumerWidget {
               },
             ),
             _HelpLinksSection(
-              onHowToUse: () => _comingSoon(context, 'How to Use This Map'),
-              onDataSources: () =>
-                  _comingSoon(context, 'Data Sources & Credits'),
+              onHowToUse: () => showHowToUseDialog(context),
+              onDataSources: () => showDataSourcesDialog(context),
             ),
             const Divider(height: 1),
             const _Footer(),
