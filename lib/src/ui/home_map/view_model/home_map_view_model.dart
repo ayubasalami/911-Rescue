@@ -8,10 +8,13 @@ import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
 import '../../../data/models/route_point.dart';
+import '../../../core/env.dart';
 import '../../../data/repositories/access_analysis_repository.dart';
+import '../../../data/repositories/active_ping_repository.dart';
 import '../../../data/repositories/facility_repository.dart';
 import '../../../data/repositories/location_repository.dart';
 import '../../../data/services/access_analysis_service.dart';
+import '../../../data/services/ping_service.dart';
 import '../../../data/services/voice_directions_service.dart';
 
 const defaultMapCenter = GeoPoint(latitude: 6.5244, longitude: 3.3792);
@@ -353,16 +356,55 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       Err(:final failure) => failure.userMessage,
     };
 
+    // A ping still open from before this launch reopens the Get Help card
+    // at its location; the card itself finds and resumes the ping.
+    final activePing = await _openActivePing();
+
     return HomeMapState(
       facilities: facilities,
-      center: center,
+      center: activePing?.origin ?? center,
       locationStatus: locationResult.status,
       lagosBoundary: boundary,
+      originSelection: activePing == null
+          ? null
+          : OriginSelection(
+              point: activePing.origin,
+              title: activePing.isPinned ? '📍 Dropped Pin' : 'Your Location',
+              analyzeLabel: activePing.isPinned
+                  ? 'Analyze Access Here'
+                  : 'Analyze Access',
+              followsUser: !activePing.isPinned,
+            ),
+      showGetHelpFast: activePing != null,
       // Location's own message takes priority when both fail — it's the
       // more fundamentally blocking of the two (no facilities is a broken
       // list; no location is a broken map).
       errorMessage: locationMessage ?? facilitiesMessage,
     );
+  }
+
+  /// The saved ping, if it's still open. One the server reports closed is
+  /// forgotten here; one it can't be asked about (offline) is kept — the
+  /// card's own polling will settle it once there's a connection.
+  Future<ActivePing?> _openActivePing() async {
+    if (isTestEnvironment) return null;
+    final repository = ref.read(activePingRepositoryProvider);
+    final ActivePing? stored;
+    try {
+      stored = await repository.load();
+    } catch (_) {
+      // Never let storage trouble take down the whole map load.
+      return null;
+    }
+    if (stored == null) return null;
+    final result = await ref
+        .read(pingServiceProvider)
+        .trackPing(stored.publicId);
+    if (result case Ok(:final value) when value.incident.status.isClosed) {
+      await repository.clear();
+      return null;
+    }
+    return stored;
   }
 
   Future<void> refresh() async {

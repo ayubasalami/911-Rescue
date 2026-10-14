@@ -12,6 +12,7 @@ import '../../../data/models/emergency_profile.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
 import '../../../data/models/ping.dart';
+import '../../../data/repositories/active_ping_repository.dart';
 import '../../../data/repositories/location_repository.dart';
 import '../../../data/services/geocoding_service.dart';
 import '../../../data/services/ping_service.dart';
@@ -163,11 +164,51 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
 
   static const _maxRecordingSeconds = 30;
 
+  /// True until [_resumeStoredPing] has looked for a saved ping — the card
+  /// renders nothing meanwhile, rather than flashing the choose-option view
+  /// before swapping to an in-progress ping.
+  bool _checkingStoredPing = false;
+
+  /// Picks up a ping raised earlier — before an app restart, or before
+  /// this card was closed — instead of offering to raise a new one. A ping
+  /// that has since closed is still shown; polling reports its final state
+  /// and clears it from storage.
+  Future<void> _resumeStoredPing() async {
+    ActivePing? loaded;
+    try {
+      loaded = await ref.read(activePingRepositoryProvider).load();
+    } catch (_) {
+      // Storage failing must never leave the card hidden mid-emergency —
+      // fall through to the normal choose-option view.
+    }
+    final stored = loaded;
+    if (!mounted) return;
+    final category = stored?.agency.facilityCategory._helpCategory;
+    if (stored == null || category == null) {
+      setState(() => _checkingStoredPing = false);
+      return;
+    }
+    setState(() {
+      _checkingStoredPing = false;
+      _pingCategory = category;
+      _publicId = stored.publicId;
+      _respondersAvailable = stored.respondersAvailable;
+      _addressLoading = true;
+    });
+    widget.onPingActiveChanged?.call(true);
+    unawaited(_loadAddress(stored.origin));
+    _startPolling();
+  }
+
   @override
   void initState() {
     super.initState();
     final initial = widget.initialPingCategory?._helpCategory;
-    if (initial == null) return;
+    if (initial == null) {
+      _checkingStoredPing = true;
+      unawaited(_resumeStoredPing());
+      return;
+    }
     _pingCategory = initial;
     _addressLoading = widget.origin != null;
     _pingCreating = widget.origin != null;
@@ -279,6 +320,20 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
           _respondersAvailable = value.respondersAvailable;
           _pingCreating = false;
         });
+        // Survives an app restart — see [ActivePingRepository].
+        unawaited(
+          ref
+              .read(activePingRepositoryProvider)
+              .save(
+                ActivePing(
+                  publicId: value.publicId,
+                  agency: category.pingAgency,
+                  origin: point,
+                  isPinned: widget.isPinnedLocation,
+                  respondersAvailable: value.respondersAvailable,
+                ),
+              ),
+        );
         _startPolling();
       case Err(:final failure):
         setState(() {
@@ -322,6 +377,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
         if (value.incident.status.isClosed) {
           _pollTimer?.cancel();
           _pollTimer = null;
+          unawaited(ref.read(activePingRepositoryProvider).clear());
         }
       case Err():
         // Transient — keep polling, the next tick may succeed.
@@ -385,6 +441,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     });
     if (publicId != null) {
       unawaited(ref.read(pingServiceProvider).cancelPing(publicId));
+      unawaited(ref.read(activePingRepositoryProvider).clear());
     }
   }
 
@@ -475,6 +532,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingStoredPing) return const SizedBox.shrink();
     final isPinging = _pingCategory != null;
     return Material(
       color: AppColors.backgroundSurface,
