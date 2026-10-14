@@ -27,7 +27,8 @@ abstract final class AnalyticsEvents {
   /// Param: `source` = `drawer` | `route_planner`.
   static const searchResultSelected = 'search_result_selected';
 
-  /// Params: `source` = `get_help` | `facility` | `route_planner`, `mode`,
+  /// Params: `source` = `get_help` | `facility` | `route_planner` |
+  /// `triage`, `mode`,
   /// and `category` when the destination is a facility type.
   static const routeStarted = 'route_started';
 
@@ -52,6 +53,6 @@ abstract final class AnalyticsEvents {
   static const legendToggled = 'legend_toggled';
   static const triageChatOpened = 'triage_chat_opened';
 
-  /// Params: `action` = `ping` | `go_to_help`, `category`.
+  /// A Triage routing button. Params: `category`, `emergency`.
   static const triageHandoff = 'triage_handoff';
 }

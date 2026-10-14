@@ -29,14 +29,16 @@ class TriageService {
         final r = JsonReader(body);
         final secondary = r.stringOrNull('secondary_agency');
         return TriageAssessment(
-          source: TriageSource.fromApi(r.string('source')),
+          // Not always sent (absent on live AI answers) — the web treats a
+          // missing source as "not the offline classifier", so do the same.
+          source: TriageSource.fromApi(r.stringOrNull('source') ?? 'ai'),
           agency: PingAgencyApi.fromApi(r.string('agency')),
           department: r.stringOrNull('department'),
           secondaryAgency: secondary == null
               ? null
               : PingAgencyApi.fromApi(secondary),
           isEmergency: r.boolOr('is_emergency', fallback: false),
-          urgency: r.string('urgency'),
+          urgency: r.stringOrNull('urgency') ?? '',
           sensitive: r.boolOr('sensitive', fallback: false),
           message: r.string('message'),
         );

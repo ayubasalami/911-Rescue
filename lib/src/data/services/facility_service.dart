@@ -113,6 +113,7 @@ class FacilityService {
       id: _syntheticId(name, lat, lng),
       name: name,
       category: classifyFacilityCategory(properties.stringOrNull('category')),
+      rawCategory: properties.stringOrNull('category'),
       latitude: lat,
       longitude: lng,
       address: properties.stringOrNull('address'),
@@ -146,6 +147,7 @@ class FacilityService {
       id: _syntheticId(name, lat, lng),
       name: name,
       category: classifyFacilityCategory(r.stringOrNull('category')),
+      rawCategory: r.stringOrNull('category'),
       latitude: lat,
       longitude: lng,
     );
@@ -171,6 +173,7 @@ class FacilityService {
           id: _syntheticId(name, lat, lng),
           name: name,
           category: classifyFacilityCategory(r.stringOrNull('category')),
+          rawCategory: r.stringOrNull('category'),
           latitude: lat,
           longitude: lng,
         );

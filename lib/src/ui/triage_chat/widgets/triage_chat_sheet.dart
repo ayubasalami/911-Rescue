@@ -3,11 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../data/models/facility.dart';
 import '../../../data/models/ping.dart';
 import '../../../data/models/triage.dart';
 import '../../../data/services/triage_service.dart';
-import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_filter_chip.dart';
 
 const _quickReplies = [
@@ -43,22 +41,20 @@ class _AssessmentEntry extends _ChatEntry {
 }
 
 /// The Triage chatbot — sends what the user types to
-/// `POST /api/triage_symptoms` and turns the result into an action: an
-/// emergency gets a "Send Ping"/"Call 112" choice, a non-emergency gets
-/// "Go to Help", and a sensitive topic gets support framing with no
-/// facility routing at all. Routing itself (raising the ping, starting Go
-/// to Help) is the caller's job — this widget has no map context of its
-/// own, same division used by `GetHelpSheet`.
+/// `POST /api/triage_symptoms` and turns the result into actions, the way
+/// the web does: "Call 112 Now" for an emergency, a routing button for the
+/// agency ("Show nearest …" for an emergency, "Navigate to …" otherwise)
+/// plus "Also: …" for a secondary agency, and nothing but the message for
+/// a sensitive topic. Picking the facility and routing to it is the
+/// caller's job ([onNavigateTo]) — this widget has no map context.
 class TriageChatSheet extends ConsumerStatefulWidget {
   const TriageChatSheet({
     super.key,
-    required this.onSendPing,
-    required this.onGoToHelp,
+    required this.onNavigateTo,
     required this.onCall112,
   });
 
-  final ValueChanged<FacilityCategory> onSendPing;
-  final ValueChanged<FacilityCategory> onGoToHelp;
+  final ValueChanged<TriageNavigation> onNavigateTo;
   final VoidCallback onCall112;
 
   @override
@@ -291,22 +287,37 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
     ),
   );
 
-  Widget _assistantBubble(Widget child) => Padding(
+  /// [emergency] and [sensitive] are the web's `.bubble.ai.emergency` /
+  /// `.sensitive` variants: a pink 🚨 avatar and pink-tinted bubble for an
+  /// emergency, a faint blue tint for a sensitive topic.
+  Widget _assistantBubble(
+    Widget child, {
+    bool emergency = false,
+    bool sensitive = false,
+  }) => Padding(
     padding: const EdgeInsets.only(bottom: 10),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const CircleAvatar(
+        CircleAvatar(
           radius: 16,
-          backgroundColor: AppColors.primary,
-          child: Text('🏥', style: TextStyle(fontSize: 16)),
+          backgroundColor: emergency ? AppColors.danger : AppColors.primary,
+          child: Text(
+            emergency ? '🚨' : '🏥',
+            style: const TextStyle(fontSize: 16),
+          ),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.backgroundCanvas,
+              color: emergency
+                  ? AppColors.danger.withValues(alpha: 0.1)
+                  : sensitive
+                  ? AppColors.primary.withValues(alpha: 0.06)
+                  : AppColors.backgroundCanvas,
+              border: emergency ? Border.all(color: AppColors.danger) : null,
               borderRadius: BorderRadius.circular(AppRadii.md),
             ),
             child: child,
@@ -316,98 +327,118 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
     ),
   );
 
-  /// `sensitive: true` gets support framing and a 112 button only — never a
-  /// facility routing button, per the API docs. Otherwise: the assessment
-  /// text, an "offline classifier" note when [TriageAssessment.source] is
-  /// [TriageSource.local], and either "Send Ping"/"Call 112" (emergency) or
-  /// "Go to Help" (not), gated on recognizing [TriageAssessment.agency] at
-  /// all — an unrecognized string hides the routing buttons rather than
-  /// guessing where to send the user.
+  /// Mirrors the web's response bubble: the message, a dashed-off note when
+  /// a secondary agency may also be needed, an "answered offline" note for
+  /// the keyword classifier, "Call 112 Now" for an emergency, then the
+  /// routing button(s). A sensitive topic gets the message only — no
+  /// routing. An agency this app doesn't recognize hides its button rather
+  /// than guessing where to send the user.
   Widget _assessmentBubble(TriageAssessment assessment) {
-    if (assessment.sensitive) {
-      return _assistantBubble(
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(assessment.message),
-            const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: AppButton(
-                label: 'Call 112',
-                variant: AppButtonVariant.danger,
-                onPressed: widget.onCall112,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
+    final emergency = assessment.isEmergency;
+    final secondary = assessment.secondaryAgency;
     final agency = assessment.agency;
+    final actions = assessment.sensitive
+        ? const <Widget>[]
+        : <Widget>[
+            if (agency != null)
+              _routeAction(
+                emergency
+                    ? 'Show nearest ${agency.apiValue}'
+                    : 'Navigate to ${agency.apiValue}',
+                TriageNavigation(
+                  category: agency.facilityCategory,
+                  department: assessment.department,
+                  isEmergency: emergency,
+                ),
+              ),
+            if (secondary != null)
+              _routeAction(
+                'Also: ${secondary.apiValue}',
+                TriageNavigation(
+                  category: secondary.facilityCategory,
+                  isEmergency: emergency,
+                ),
+              ),
+          ];
+
     return _assistantBubble(
+      emergency: emergency,
+      sensitive: assessment.sensitive,
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (agency != null)
-            Text(
-              [
-                agency.apiValue,
-                if (assessment.department != null) assessment.department!,
-                assessment.urgency,
-              ].join(' · '),
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-            ),
-          const SizedBox(height: 4),
           Text(assessment.message),
-          if (assessment.source == TriageSource.local) ...[
-            const SizedBox(height: 6),
-            const Text(
-              'Answered by the offline classifier — less precise than usual.',
-              style: TextStyle(
-                fontSize: 11,
-                color: AppColors.textSecondary,
+          if (secondary != null) ...[
+            const SizedBox(height: 8),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            Text(
+              'This may also need ${secondary.apiValue}.',
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.primary,
                 fontStyle: FontStyle.italic,
               ),
             ),
           ],
-          if (agency != null) ...[
-            const SizedBox(height: 10),
-            Row(
-              spacing: 8,
-              children: assessment.isEmergency
-                  ? [
-                      Expanded(
-                        child: AppButton(
-                          label: 'Send Ping',
-                          icon: Icons.sensors,
-                          variant: AppButtonVariant.danger,
-                          onPressed: () =>
-                              widget.onSendPing(agency.facilityCategory),
-                        ),
-                      ),
-                      Expanded(
-                        child: AppButton(
-                          label: 'Call 112',
-                          variant: AppButtonVariant.secondary,
-                          onPressed: widget.onCall112,
-                        ),
-                      ),
-                    ]
-                  : [
-                      Expanded(
-                        child: AppButton(
-                          label: 'Go to Help',
-                          icon: Icons.directions_car,
-                          onPressed: () =>
-                              widget.onGoToHelp(agency.facilityCategory),
-                        ),
-                      ),
-                    ],
+          if (assessment.source == TriageSource.local) ...[
+            const SizedBox(height: 6),
+            const Text(
+              'Answered offline — AI triage unavailable, so this is a simpler '
+              'keyword match.',
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
             ),
           ],
+          if (emergency) ...[
+            const SizedBox(height: 10),
+            _actionButton(
+              label: 'Call 112 Now',
+              icon: Icons.call,
+              color: AppColors.danger,
+              onPressed: widget.onCall112,
+            ),
+          ],
+          // Stacked, not side by side like the web's desktop row: at phone
+          // width two buttons each wrap to three lines.
+          for (final action in actions) ...[const SizedBox(height: 8), action],
         ],
       ),
     );
   }
+
+  Widget _routeAction(String label, TriageNavigation navigation) =>
+      _actionButton(
+        label: label,
+        icon: Icons.location_on_outlined,
+        color: _webGreen,
+        onPressed: () => widget.onNavigateTo(navigation),
+      );
+
+  /// The web's `.bubble-action`: full-width, 10px corners, bold 13px label.
+  Widget _actionButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onPressed,
+  }) => SizedBox(
+    width: double.infinity,
+    child: FilledButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 14),
+      label: Text(
+        label,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+      ),
+      style: FilledButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    ),
+  );
 }
+
+/// The web's `--accent-green`.
+const _webGreen = Color(0xFF00AA55);

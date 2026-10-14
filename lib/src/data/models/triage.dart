@@ -1,3 +1,4 @@
+import 'facility.dart';
 import 'ping.dart';
 
 /// Which classifier produced a [TriageAssessment] — `local` is the keyword
@@ -11,6 +12,20 @@ enum TriageSource {
     'local' => TriageSource.local,
     _ => TriageSource.ai,
   };
+}
+
+/// Where a Triage action button sends the user — the web's
+/// `onNavigateTo({agency, department, isEmergency})`.
+class TriageNavigation {
+  const TriageNavigation({
+    required this.category,
+    required this.isEmergency,
+    this.department,
+  });
+
+  final FacilityCategory category;
+  final String? department;
+  final bool isEmergency;
 }
 
 /// The result of `POST /api/triage_symptoms`.

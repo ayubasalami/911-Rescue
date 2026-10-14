@@ -9,6 +9,7 @@ import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
 import '../../../data/models/route_point.dart';
+import '../../../data/models/triage.dart';
 import '../../../core/env.dart';
 import '../../../data/repositories/access_analysis_repository.dart';
 import '../../../data/repositories/active_ping_repository.dart';
@@ -18,6 +19,7 @@ import '../../../data/services/access_analysis_service.dart';
 import '../../../data/services/analytics_service.dart';
 import '../../../data/services/ping_service.dart';
 import '../../../data/services/voice_directions_service.dart';
+import '../../../utils/triage_facility_picker.dart';
 
 const defaultMapCenter = GeoPoint(latitude: 6.5244, longitude: 3.3792);
 
@@ -825,6 +827,68 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     );
   }
 
+  /// A Triage routing button ("Show nearest …" / "Navigate to …" /
+  /// "Also: …") — the web's `onNavigateTo`: clear whatever is on the map,
+  /// take a live GPS fix, pick the facility the way the web does (see
+  /// [pickTriageFacility]) and route there from the user's position.
+  ///
+  /// Returns `false` when there's no GPS fix; like the web, the caller then
+  /// opens the Route Planner so the user can pick a start point instead.
+  Future<bool> startTriageRoute(TriageNavigation navigation) async {
+    clearPopups();
+    _update(
+      (s) => s.copyWith(
+        activeAnalysis: null,
+        activeAnalysisOrigin: null,
+        activeAnalysisFollowsUser: false,
+        showAnalysisSheet: false,
+        showRoutePlanner: false,
+        goToHelpCloseConfirming: false,
+        routeChipDismissed: false,
+        goToHelpLoading: true,
+      ),
+    );
+
+    final location = await ref
+        .read(locationRepositoryProvider)
+        .currentPosition();
+    final origin = location.position;
+    if (origin == null) {
+      _update(
+        (s) => s.copyWith(
+          goToHelpLoading: false,
+          showRoutePlanner: true,
+          // The web opens the planner silently; saying why avoids it
+          // looking like the button did the wrong thing.
+          errorMessage:
+              "Couldn't get your location — choose a starting point to "
+              'get directions.',
+        ),
+      );
+      return false;
+    }
+
+    final facility = pickTriageFacility(
+      facilities: state.value?.facilities ?? const <Facility>[],
+      origin: origin,
+      category: navigation.category,
+      department: navigation.department,
+      isEmergency: navigation.isEmergency,
+    );
+    if (facility == null) {
+      _update((s) => s.copyWith(goToHelpLoading: false));
+      _setError('No nearby ${navigation.category.displayLabel} found');
+      return true;
+    }
+    await startGoToHelpToFacility(
+      facility,
+      origin: origin,
+      followsUser: true,
+      analyticsSource: 'triage',
+    );
+    return true;
+  }
+
   /// Routes to [facility] directly, skipping the "nearest of category"
   /// search [startGoToHelp] does — used when the destination is already
   /// chosen, e.g. "Map Route" on a specific facility row in the Access
@@ -837,6 +901,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     Facility facility, {
     required GeoPoint origin,
     required bool followsUser,
+    String analyticsSource = 'facility',
   }) async {
     _update((s) => s.copyWith(goToHelpLoading: true));
     final route = await fetchRoute(
@@ -848,7 +913,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       return;
     }
 
-    _logRouteStarted('facility', category: facility.category);
+    _logRouteStarted(analyticsSource, category: facility.category);
     _update(
       (s) => s.copyWith(
         goToHelpDestination: RoutePoint.fromFacility(facility),

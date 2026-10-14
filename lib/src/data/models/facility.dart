@@ -19,6 +19,7 @@ class Facility {
     required this.longitude,
     this.address,
     this.phone,
+    this.rawCategory,
   });
 
   final String id;
@@ -32,4 +33,9 @@ class Facility {
   /// not an address (see `FacilityService`).
   final String? address;
   final String? phone;
+
+  /// The backend's own free-text category (e.g. "General Hospital",
+  /// "Pharmacy") before it's grouped into [category] — what Triage uses to
+  /// match a department and to rank hospitals for an emergency.
+  final String? rawCategory;
 }

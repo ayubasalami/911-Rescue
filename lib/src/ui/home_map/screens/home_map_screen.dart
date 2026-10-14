@@ -13,6 +13,7 @@ import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
 import '../../../data/models/route_point.dart';
+import '../../../data/models/triage.dart';
 import '../../../data/services/analytics_service.dart';
 import '../../get_help/widgets/get_help_sheet.dart';
 import '../../triage_chat/widgets/triage_chat_sheet.dart';
@@ -433,13 +434,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           borderRadius: BorderRadius.circular(AppRadii.lg),
         ),
         child: TriageChatSheet(
-          onSendPing: (category) {
+          onNavigateTo: (navigation) {
             Navigator.of(dialogContext).pop();
-            unawaited(_confirmTriageHandoff(category, asPing: true));
-          },
-          onGoToHelp: (category) {
-            Navigator.of(dialogContext).pop();
-            unawaited(_confirmTriageHandoff(category, asPing: false));
+            unawaited(_navigateFromTriage(navigation));
           },
           onCall112: () {
             Navigator.of(dialogContext).pop();
@@ -450,43 +447,37 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     );
   }
 
-  /// Triage's "Send Ping"/"Go to Help" handoff. Unlike Go to Help's "Send
-  /// SOS instead" (which reuses whatever origin Go to Help is already
-  /// using), Triage is opened from the SOS menu with no origin selected
-  /// yet — so this fetches a fresh live position first, the same one
-  /// tapping the location button would.
-  Future<void> _confirmTriageHandoff(
-    FacilityCategory category, {
-    required bool asPing,
-  }) async {
+  /// A Triage routing button — mirrors the web: the map is cleared, the
+  /// facility is picked from a live GPS fix and routed to with the same
+  /// card, overlay and line as every other route. With no GPS fix the
+  /// Route Planner opens instead (the view model does that).
+  Future<void> _navigateFromTriage(TriageNavigation navigation) async {
     ref
         .read(analyticsServiceProvider)
         .logEvent(
           AnalyticsEvents.triageHandoff,
           parameters: {
-            'action': asPing ? 'ping' : 'go_to_help',
-            'category': category.name,
+            'category': navigation.category.name,
+            'emergency': '${navigation.isEmergency}',
           },
         );
-    final origin = await _viewModel.recenterOnUser();
-    if (!mounted || origin == null) return;
-
-    if (!asPing) {
-      await _startGoToHelp(category);
+    await _mapController.clearIsochroneAndRoute();
+    if (!mounted) return;
+    if (!await _viewModel.startTriageRoute(navigation)) return;
+    final state = ref.read(homeMapViewModelProvider).value;
+    final origin = state?.goToHelpOrigin;
+    final route = state?.goToHelpRoute;
+    final destination = state?.goToHelpDestination;
+    if (!mounted || origin == null || route == null || destination == null) {
       return;
     }
-
-    _viewModel.openGetHelpFast();
-    setState(() => _pendingSosCategory = category);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) setState(() => _pendingSosCategory = null);
-    });
-
-    await _mapController.flyTo(origin);
+    await _mapController.renderRoute([origin, ...route.points]);
     if (!mounted) return;
-    final anchor = await _mapController.pixelForCoordinate(origin);
-    if (!mounted) return;
-    _popupAnchor.value = anchor;
+    await _mapController.flyToBounds([
+      origin,
+      ...route.points,
+      destination.point,
+    ]);
   }
 
   void _openFacilitySheet(Facility facility) {
