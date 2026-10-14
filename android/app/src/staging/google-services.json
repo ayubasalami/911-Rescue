@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "719724548862",
+    "project_id": "rescue-staging",
+    "storage_bucket": "rescue-staging.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:719724548862:android:2dc21d162d97bf08d00baf",
+        "android_client_info": {
+          "package_name": "com.bwanalytics.rescue911.dev"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5L32scjsXgRIBmF9lZGEb3b2uHiQLFa8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:719724548862:android:5a4863c3e0636c64d00baf",
+        "android_client_info": {
+          "package_name": "com.bwanalytics.rescue911.staging"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC5L32scjsXgRIBmF9lZGEb3b2uHiQLFa8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
