@@ -1,3 +1,6 @@
 #include "../Release.xcconfig"
 PRODUCT_BUNDLE_IDENTIFIER = com.bwanalytics.rescue911.dev
 APP_DISPLAY_NAME = 911 Rescue Dev
+// Google sign-in callback URL scheme — REVERSED_CLIENT_ID from
+// ios/config/dev/GoogleService-Info.plist.
+GOOGLE_REVERSED_CLIENT_ID = com.googleusercontent.apps.719724548862-fot53blmkor1s7n4lvcdjpr22a3sioqh

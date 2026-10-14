@@ -254,6 +254,7 @@
 				8BCB62C340C9C5316032133E /* [CP] Embed Pods Frameworks */,
 				8170467F4739A2EB9A953821 /* FlutterFire: "flutterfire bundle-service-file" */,
 				8EA044379DB8D38C7978A671 /* FlutterFire: "flutterfire upload-crashlytics-symbols" */,
+				402C26104A7CA96D188E6591 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -362,6 +363,23 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin";
+		};
+		402C26104A7CA96D188E6591 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources.sh\"\n";
+			showEnvVarsInLog = 0;
 		};
 		8170467F4739A2EB9A953821 /* FlutterFire: "flutterfire bundle-service-file" */ = {
 			isa = PBXShellScriptBuildPhase;

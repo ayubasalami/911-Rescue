@@ -11,6 +11,7 @@ import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/repositories/facility_repository.dart';
 import '../../../data/services/analytics_service.dart';
+import '../../../data/services/google_sign_in_service.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/facility_category_glyph.dart';
 import '../view_model/home_map_view_model.dart';
@@ -76,6 +77,23 @@ class HomeDrawer extends ConsumerWidget {
     ).showSnackBar(SnackBar(content: Text('$feature is coming soon.')));
   }
 
+  /// Native Google sign-in only, for now — the backend has no endpoint
+  /// yet that turns the ID token into a session, so this just confirms the
+  /// Google side works.
+  Future<void> _signInWithGoogle(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final outcome = await ref.read(googleSignInServiceProvider).signIn();
+    final message = switch (outcome) {
+      GoogleSignInSucceeded(:final identity) =>
+        'Signed in with Google as ${identity.email}.',
+      GoogleSignInCancelled() => null,
+      GoogleSignInFailed(:final message) => message,
+    };
+    if (message != null) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(homeMapViewModelProvider).value;
@@ -97,7 +115,7 @@ class HomeDrawer extends ConsumerWidget {
               child: SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
-                  onPressed: () => _comingSoon(context, 'Sign in'),
+                  onPressed: () => _signInWithGoogle(context, ref),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.textPrimary,
                     side: const BorderSide(color: AppColors.border),

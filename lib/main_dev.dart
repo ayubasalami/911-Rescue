@@ -8,6 +8,8 @@ void main() async {
       appDisplayName: '911 Rescue Dev',
       apiBaseUrl: 'https://api.911rescueme.com',
       mapboxAccessToken: String.fromEnvironment('MAPBOX_ACCESS_TOKEN'),
+      googleServerClientId:
+          '719724548862-jbglfulaussea2jcn1d4t0u77agggmcd.apps.googleusercontent.com',
     ),
   );
 }

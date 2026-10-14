@@ -27,6 +27,7 @@ void main() {
               // construction) ever runs.
               apiBaseUrl: 'https://api.911rescueme.com',
               mapboxAccessToken: 'pk.test',
+              googleServerClientId: 'test.apps.googleusercontent.com',
             ),
           ),
           // A plain in-memory CookieJar — no disk/platform-channel access,
