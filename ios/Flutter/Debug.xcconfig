@@ -1,2 +1,5 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
 #include "Generated.xcconfig"
+// `#if DEBUG` in Swift (AppDelegate's DebugView switch) needs this — it is
+// not on just because the configuration is called Debug.
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) DEBUG

@@ -1,14 +1,17 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// Thin wrapper around [FirebaseAnalytics.instance].
 ///
 /// Every method is a no-op when no Firebase app was initialized — e.g.
-/// under `flutter test`, which never runs `bootstrap()`. Collection is off
-/// in debug builds so simulator runs stay out of the dashboards.
+/// under `flutter test`, which never runs `bootstrap()`.
+///
+/// Debug builds still collect, so events can be checked in DebugView:
+/// iOS switches debug mode on in `AppDelegate.swift`; Android needs
+/// `adb shell setprop debug.firebase.analytics.app <application id>`
+/// (see README). Debug-mode events are kept out of the normal reports.
 class AnalyticsService {
   AnalyticsService(this._analytics);
 
@@ -16,7 +19,7 @@ class AnalyticsService {
     final analytics = Firebase.apps.isNotEmpty
         ? FirebaseAnalytics.instance
         : null;
-    analytics?.setAnalyticsCollectionEnabled(!kDebugMode);
+    analytics?.setAnalyticsCollectionEnabled(true);
     return AnalyticsService(analytics);
   }
 
