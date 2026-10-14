@@ -20,6 +20,10 @@ class Facility {
     this.address,
     this.phone,
     this.rawCategory,
+    this.description,
+    this.website,
+    this.imageUrl,
+    this.services = const [],
   });
 
   /// A general place from the OpenStreetMap search, opened in the same
@@ -62,4 +66,13 @@ class Facility {
   /// "Pharmacy") before it's grouped into [category] — what Triage uses to
   /// match a department and to rank hospitals for an emergency.
   final String? rawCategory;
+
+  /// Only on facilities from `/api/hospitals` — View Info falls back to
+  /// per-category defaults (as the web does) when these are missing.
+  final String? description;
+  final String? website;
+
+  /// A photo URL; may be relative to the API host (see View Info).
+  final String? imageUrl;
+  final List<String> services;
 }

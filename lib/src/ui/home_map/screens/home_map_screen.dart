@@ -27,7 +27,7 @@ import '../widgets/calculating_route_overlay.dart';
 import '../widgets/change_commute_mode_card.dart';
 import '../widgets/facility_filter_row.dart';
 import '../widgets/facility_popup_card.dart';
-import '../widgets/facility_summary_sheet.dart';
+import '../widgets/facility_info_dialog.dart';
 import '../widgets/go_to_help_card.dart';
 import '../widgets/go_to_help_mode_bar.dart';
 import '../widgets/home_drawer.dart';
@@ -115,7 +115,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// its fields (the web's "Tap anywhere on the map…" mode). The planner
   /// is hidden but kept alive meanwhile, so what's typed isn't lost.
   PlannerEndpoint? _plannerDropTarget;
-  final _routePlannerKey = GlobalKey<RoutePlannerCardState>();
+
+  /// Replaced whenever the planner is opened to a new destination, so it
+  /// starts fresh instead of keeping the previous inputs.
+  var _routePlannerKey = GlobalKey<RoutePlannerCardState>();
+
+  /// The destination a facility's Get Directions opened the planner with;
+  /// cleared when the planner closes.
+  RoutePoint? _plannerDestination;
 
   /// Owned here (not by [HomeDrawer]) so the map's side-button search icon
   /// can request focus on the drawer's search field from outside it.
@@ -525,31 +532,35 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     ]);
   }
 
-  void _openFacilitySheet(Facility facility) {
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => FacilitySummarySheet(facility: facility),
+  /// The web's facility modal. Its Get Directions does the same as the
+  /// popup's, so the two buttons never disagree.
+  void _viewFacilityInfo(Facility facility) {
+    _clearPopup();
+    unawaited(
+      showFacilityInfoDialog(
+        context,
+        facility: facility,
+        onGetDirections: () => _openPlannerTo(facility),
+      ),
     );
   }
 
-  void _viewFacilityInfo(Facility facility) {
+  /// Get Directions on a facility — the web's `Mt(lat, lng, name)`: open
+  /// the Route Planner with the facility as the destination; the planner
+  /// then starts from the user's GPS position and routes by itself.
+  void _openPlannerTo(Facility facility) {
     _clearPopup();
-    _openFacilitySheet(facility);
+    setState(() {
+      _plannerDestination = RoutePoint.fromFacility(facility);
+      _plannerDropTarget = null;
+      _routePlannerKey = GlobalKey<RoutePlannerCardState>();
+    });
+    _viewModel.openRoutePlanner();
   }
 
   void _saveFacility() {
     _clearPopup();
     _showComingSoon('Saving facilities');
-  }
-
-  Future<void> _getDirectionsToFacility(Facility facility) async {
-    _clearPopup();
-    final origin = await _viewModel.currentUserLocation();
-    if (origin == null) return;
-    await _getDirectionsTo(
-      origin,
-      GeoPoint(latitude: facility.latitude, longitude: facility.longitude),
-    );
   }
 
   /// "Map Route" on a facility in the Access Analysis sheet — routes to it
@@ -611,7 +622,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final state = ref.read(homeMapViewModelProvider).value;
     final resolvedOrigin = state?.goToHelpOrigin;
     final route = state?.goToHelpRoute;
-    if (!mounted || resolvedOrigin == null || route == null) return;
+    // A failed fetch leaves any earlier route in place — only carry on if
+    // this request's destination is the one now routed to.
+    if (!mounted ||
+        resolvedOrigin == null ||
+        route == null ||
+        !identical(state?.goToHelpDestination, destination)) {
+      return;
+    }
     await _mapController.renderRoute([resolvedOrigin, ...route.points]);
     if (!mounted) return;
     await _mapController.flyToBounds([
@@ -622,6 +640,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         longitude: destination.longitude,
       ),
     ]);
+    if (!mounted || route.steps.isEmpty) return;
+    // Like the web, a planner route opens its step-by-step directions first;
+    // the route card is underneath once they're closed.
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      barrierColor: Colors.black26,
+      builder: (_) => TurnByTurnSheet(steps: route.steps),
+    );
   }
 
   Future<void> _getDirectionsTo(GeoPoint origin, GeoPoint destination) async {
@@ -817,9 +844,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       }
       // The planner closed some other way while waiting for a pin — drop
       // the wait too, or reopening it would start hidden behind the banner.
-      if (_plannerDropTarget != null &&
+      if ((_plannerDropTarget != null || _plannerDestination != null) &&
           !(next.value?.showRoutePlanner ?? false)) {
-        setState(() => _plannerDropTarget = null);
+        setState(() {
+          _plannerDropTarget = null;
+          _plannerDestination = null;
+        });
       }
     });
 
@@ -916,6 +946,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 offstage: _plannerDropTarget != null,
                 child: RoutePlannerCard(
                   key: _routePlannerKey,
+                  initialDestination: _plannerDestination,
                   onClose: _viewModel.closeRoutePlanner,
                   onDropPin: (target) =>
                       setState(() => _plannerDropTarget = target),
@@ -1176,7 +1207,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                           ),
                         ),
                         onGetDirections: () =>
-                            _getDirectionsToFacility(state.selectedFacility!),
+                            _openPlannerTo(state.selectedFacility!),
                         onSaveFacility: _saveFacility,
                         onClose: _clearPopup,
                       ),

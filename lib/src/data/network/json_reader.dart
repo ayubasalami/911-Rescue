@@ -136,6 +136,14 @@ class JsonReader {
         .toList(growable: false);
   }
 
+  /// The strings in the array at [key]; empty when it's missing, null or
+  /// not an array — for optional lists like a facility's `services`.
+  List<String> stringListOrEmpty(String key) {
+    final value = _json[key];
+    if (value is! List) return const [];
+    return value.whereType<String>().toList(growable: false);
+  }
+
   /// The raw decoded array at [key], unmapped — for shapes [list] can't
   /// handle because the elements aren't JSON objects, like a GeoJSON
   /// coordinate array (`[lng, lat]`, or nested arrays of those for a

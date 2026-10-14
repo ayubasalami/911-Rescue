@@ -586,6 +586,13 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     _update((s) => s.copyWith(showRoutePlanner: !s.showRoutePlanner));
   }
 
+  void openRoutePlanner() {
+    if (state.value?.showRoutePlanner == false) {
+      _log(AnalyticsEvents.routePlannerOpened);
+    }
+    _update((s) => s.copyWith(showRoutePlanner: true));
+  }
+
   void closeRoutePlanner() =>
       _update((s) => s.copyWith(showRoutePlanner: false));
 

@@ -118,6 +118,10 @@ class FacilityService {
       longitude: lng,
       address: properties.stringOrNull('address'),
       phone: properties.stringOrNull('phone_number'),
+      description: properties.stringOrNull('description'),
+      website: properties.stringOrNull('website'),
+      imageUrl: properties.stringOrNull('image_url'),
+      services: properties.stringListOrEmpty('services'),
     );
   }
 

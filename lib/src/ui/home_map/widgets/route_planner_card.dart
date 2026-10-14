@@ -37,8 +37,14 @@ class RoutePlannerCard extends ConsumerStatefulWidget {
     required this.selectedMode,
     required this.onModeSelected,
     required this.onDropPin,
+    this.initialDestination,
     this.loading = false,
   });
+
+  /// Set when the planner is opened from a facility's Get Directions. Like
+  /// the web, the destination is filled in, the start becomes the user's
+  /// GPS position, and the route is calculated straight away.
+  final RoutePoint? initialDestination;
 
   final VoidCallback onClose;
 
@@ -72,6 +78,35 @@ class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
   RoutePoint? _origin;
   RoutePoint? _destination;
   bool _originFollowsUser = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final destination = widget.initialDestination;
+    if (destination != null) {
+      _destination = destination;
+      _destinationController.text = destination.name;
+      _startFromCurrentLocation();
+    }
+  }
+
+  /// The web's planner effect for a preset destination: take a GPS fix as
+  /// the start and route. With no fix it just waits for the user to pick a
+  /// start (no drop-pin fallback here, unlike the GPS button).
+  Future<void> _startFromCurrentLocation() async {
+    final result = await ref.read(locationRepositoryProvider).currentPosition();
+    final position = result.position;
+    if (!mounted || position == null || _origin != null) return;
+    _setOrigin(
+      RoutePoint(
+        name: '📍 Your Location',
+        latitude: position.latitude,
+        longitude: position.longitude,
+      ),
+      followsUser: true,
+    );
+    if (_destination != null && !widget.loading) _submit();
+  }
 
   @override
   void dispose() {
