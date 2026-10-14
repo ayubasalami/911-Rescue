@@ -62,6 +62,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '1074507137942',
     projectId: 'rescue-me-app-a3b51',
     storageBucket: 'rescue-me-app-a3b51.firebasestorage.app',
+    androidClientId: '1074507137942-8lq4p2amad8725dodqovj5bb3dlv1ku9.apps.googleusercontent.com',
+    iosClientId: '1074507137942-99dv64bnk6b5p3opm869719ilgfdgd7u.apps.googleusercontent.com',
     iosBundleId: 'com.bwanalytics.rescue911',
   );
 }
