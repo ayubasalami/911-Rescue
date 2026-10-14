@@ -3,6 +3,7 @@ import 'dart:async' show StreamSubscription, unawaited;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../../core/analytics_events.dart';
 import '../../../core/result.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
@@ -14,6 +15,7 @@ import '../../../data/repositories/active_ping_repository.dart';
 import '../../../data/repositories/facility_repository.dart';
 import '../../../data/repositories/location_repository.dart';
 import '../../../data/services/access_analysis_service.dart';
+import '../../../data/services/analytics_service.dart';
 import '../../../data/services/ping_service.dart';
 import '../../../data/services/voice_directions_service.dart';
 
@@ -418,6 +420,17 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     state = AsyncData(update(current));
   }
 
+  void _log(String name, [Map<String, Object>? parameters]) =>
+      ref.read(analyticsServiceProvider).logEvent(name, parameters: parameters);
+
+  void _logRouteStarted(String source, {FacilityCategory? category}) =>
+      _log(AnalyticsEvents.routeStarted, {
+        'source': source,
+        'mode':
+            (state.value?.selectedTransportMode ?? TransportMode.driving).name,
+        'category': ?category?.name,
+      });
+
   void _setError(String message) =>
       _update((s) => s.copyWith(errorMessage: message));
 
@@ -429,8 +442,12 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   /// Just switches the selected transport mode — used by the origin popup's
   /// mode picker before an analysis has been run. See [changeCommuteMode]
   /// for switching mode while an analysis is already active.
-  void setSelectedMode(TransportMode mode) =>
-      _update((s) => s.copyWith(selectedTransportMode: mode));
+  void setSelectedMode(TransportMode mode) {
+    if (state.value?.selectedTransportMode != mode) {
+      _log(AnalyticsEvents.travelModeChanged, {'mode': mode.name});
+    }
+    _update((s) => s.copyWith(selectedTransportMode: mode));
+  }
 
   /// Stops the live position stream backing "Start" tracking, if any —
   /// called whenever the Go to Help route itself is being torn down, so a
@@ -479,6 +496,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   /// filtered out of [MapAnnotationController.syncFacilityPins]'s render
   /// list the whole time.
   void selectFacility(Facility facility) {
+    _log(AnalyticsEvents.facilityViewed, {'category': facility.category.name});
     _cancelTracking();
     _update(
       (s) => s.copyWith(
@@ -559,16 +577,28 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   /// "Get Help Fast" was opened from, without closing the popup entirely.
   void closeGetHelpFast() => _update((s) => s.copyWith(showGetHelpFast: false));
 
-  void toggleRoutePlanner() =>
-      _update((s) => s.copyWith(showRoutePlanner: !s.showRoutePlanner));
+  void toggleRoutePlanner() {
+    if (state.value?.showRoutePlanner == false) {
+      _log(AnalyticsEvents.routePlannerOpened);
+    }
+    _update((s) => s.copyWith(showRoutePlanner: !s.showRoutePlanner));
+  }
 
   void closeRoutePlanner() =>
       _update((s) => s.copyWith(showRoutePlanner: false));
 
-  void toggleLegend() => _update((s) => s.copyWith(showLegend: !s.showLegend));
+  void toggleLegend() {
+    final showing = state.value?.showLegend;
+    if (showing != null) {
+      _log(AnalyticsEvents.legendToggled, {'enabled': '${!showing}'});
+    }
+    _update((s) => s.copyWith(showLegend: !s.showLegend));
+  }
 
-  void toggleSosMenu() =>
-      _update((s) => s.copyWith(showSosMenu: !s.showSosMenu));
+  void toggleSosMenu() {
+    if (state.value?.showSosMenu == false) _log(AnalyticsEvents.sosMenuOpened);
+    _update((s) => s.copyWith(showSosMenu: !s.showSosMenu));
+  }
 
   void closeSosMenu() => _update((s) => s.copyWith(showSosMenu: false));
 
@@ -579,8 +609,13 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     (s) => s.copyWith(showEmergencyFacilities: !s.showEmergencyFacilities),
   );
 
-  void toggleLiveTrafficLayer() =>
-      _update((s) => s.copyWith(showLiveTraffic: !s.showLiveTraffic));
+  void toggleLiveTrafficLayer() {
+    final showing = state.value?.showLiveTraffic;
+    if (showing != null) {
+      _log(AnalyticsEvents.liveTrafficToggled, {'enabled': '${!showing}'});
+    }
+    _update((s) => s.copyWith(showLiveTraffic: !s.showLiveTraffic));
+  }
 
   void toggleLagosBoundaryLayer() =>
       _update((s) => s.copyWith(showLagosBoundary: !s.showLagosBoundary));
@@ -621,6 +656,13 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         return;
     }
 
+    _log(AnalyticsEvents.accessAnalysisRun, {
+      'mode':
+          (state.value?.selectedTransportMode ?? TransportMode.driving).name,
+      'threshold_minutes':
+          state.value?.analysisThresholdMinutes ??
+          kAccessAnalysisThresholdMinutes,
+    });
     _update(
       (s) => s.copyWith(
         activeAnalysis: result,
@@ -765,6 +807,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     }
 
     final destination = RoutePoint.fromFacility(nearest);
+    _logRouteStarted('get_help', category: category);
     _update(
       (s) => s.copyWith(
         goToHelpDestination: destination,
@@ -805,6 +848,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       return;
     }
 
+    _logRouteStarted('facility', category: facility.category);
     _update(
       (s) => s.copyWith(
         goToHelpDestination: RoutePoint.fromFacility(facility),
@@ -853,6 +897,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       return;
     }
 
+    _logRouteStarted('route_planner');
     _update(
       (s) => s.copyWith(
         goToHelpDestination: destination,
@@ -919,6 +964,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   /// Cancels the active Go to Help route entirely — matches the web
   /// platform's "Route active" chip close button.
   void closeGoToHelp() {
+    _log(AnalyticsEvents.routeCleared);
     _cancelTracking();
     _update(
       (s) => s.copyWith(
@@ -943,6 +989,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   Future<void> startGoToHelpTracking() async {
     final current = state.value;
     if (current?.goToHelpDestination == null) return;
+    _log(AnalyticsEvents.routeNavigationStarted);
     _cancelTracking();
     _lastGoToHelpRouteFetch = null;
     _update((s) => s.copyWith(goToHelpTracking: true));
@@ -1011,6 +1058,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   /// turning voice on partway through a real navigation app.
   void toggleGoToHelpVoice() {
     final enabling = !(state.value?.goToHelpVoiceEnabled ?? false);
+    _log(AnalyticsEvents.voiceGuidanceToggled, {'enabled': '$enabling'});
     _update((s) => s.copyWith(goToHelpVoiceEnabled: enabling));
     if (!enabling) {
       _lastSpokenInstruction = null;

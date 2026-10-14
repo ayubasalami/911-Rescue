@@ -4,13 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/analytics_events.dart';
 import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/repositories/facility_repository.dart';
+import '../../../data/services/analytics_service.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/facility_category_glyph.dart';
+import '../../core/widgets/staging_test_crash_button.dart';
 import '../view_model/home_map_view_model.dart';
 import 'map_legend.dart' show FacilityCategoryLegend;
 import 'transport_mode_button.dart';
@@ -307,6 +310,12 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
   }
 
   void _selectResult(Facility facility) {
+    ref
+        .read(analyticsServiceProvider)
+        .logEvent(
+          AnalyticsEvents.searchResultSelected,
+          parameters: {'source': 'drawer'},
+        );
     _debounce?.cancel();
     _controller.clear();
     setState(() => _results = null);
@@ -765,6 +774,7 @@ class _Footer extends StatelessWidget {
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
           ),
+          const StagingTestCrashButton(),
         ],
       ),
     );

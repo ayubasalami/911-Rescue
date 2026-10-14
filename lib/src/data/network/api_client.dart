@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/app_failure.dart';
 import '../../core/config/app_config.dart';
 import '../../core/result.dart';
+import '../services/crash_reporting_service.dart';
 import 'cookie_jar_provider.dart';
 import 'json_reader.dart';
 import 'retry_interceptor.dart';
@@ -32,9 +33,15 @@ typedef DataParser<T> = T Function(Object? body);
 /// there's no auth header interceptor to add here the way a token-based
 /// API would need.
 class ApiClient {
-  ApiClient(this._dio);
+  ApiClient(this._dio, {this.onUnexpectedError});
 
   final Dio _dio;
+
+  /// Told about failures that point at a bug rather than the network or
+  /// the server — a response that doesn't parse, or a throw from inside
+  /// a parser — so they reach crash reporting as non-fatals instead of
+  /// only ever showing up as a generic "Something went wrong."
+  final void Function(Object, StackTrace)? onUnexpectedError;
 
   final StreamController<void> _unauthorized =
       StreamController<void>.broadcast();
@@ -86,8 +93,10 @@ class ApiClient {
     } on DioException catch (e, st) {
       return Err(_mapDioException(e, st));
     } on JsonFormatException catch (e, st) {
+      onUnexpectedError?.call(e, st);
       return Err(UnknownFailure(message: e.message, cause: e, stackTrace: st));
     } catch (e, st) {
+      onUnexpectedError?.call(e, st);
       return Err(UnknownFailure(message: '$e', cause: e, stackTrace: st));
     }
   }
@@ -238,7 +247,12 @@ void _logLine(Object line) {
 }
 
 final apiClientProvider = Provider<ApiClient>((ref) {
-  final client = ApiClient(ref.watch(dioProvider));
+  final crashReporting = ref.watch(crashReportingServiceProvider);
+  final client = ApiClient(
+    ref.watch(dioProvider),
+    onUnexpectedError: (error, stack) =>
+        unawaited(crashReporting.recordError(error, stack)),
+  );
   ref.onDispose(client.dispose);
   return client;
 });

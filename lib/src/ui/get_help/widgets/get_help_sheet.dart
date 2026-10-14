@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/analytics_events.dart';
 import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/emergency_profile.dart';
@@ -14,6 +15,7 @@ import '../../../data/models/geo_point.dart';
 import '../../../data/models/ping.dart';
 import '../../../data/repositories/active_ping_repository.dart';
 import '../../../data/repositories/location_repository.dart';
+import '../../../data/services/analytics_service.dart';
 import '../../../data/services/geocoding_service.dart';
 import '../../../data/services/ping_service.dart';
 import '../../core/widgets/app_button.dart';
@@ -188,6 +190,12 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       setState(() => _checkingStoredPing = false);
       return;
     }
+    ref
+        .read(analyticsServiceProvider)
+        .logEvent(
+          AnalyticsEvents.pingResumed,
+          parameters: {'agency': stored.agency.name},
+        );
     setState(() {
       _checkingStoredPing = false;
       _pingCategory = category;
@@ -315,6 +323,12 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
 
     switch (result) {
       case Ok(:final value):
+        ref
+            .read(analyticsServiceProvider)
+            .logEvent(
+              AnalyticsEvents.pingCreated,
+              parameters: {'agency': category.pingAgency.name},
+            );
         setState(() {
           _publicId = value.publicId;
           _respondersAvailable = value.respondersAvailable;
@@ -336,6 +350,15 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
         );
         _startPolling();
       case Err(:final failure):
+        ref
+            .read(analyticsServiceProvider)
+            .logEvent(
+              AnalyticsEvents.pingFailed,
+              parameters: {
+                'agency': category.pingAgency.name,
+                'failure': '${failure.runtimeType}',
+              },
+            );
         setState(() {
           _pingError = failure.userMessage;
           _pingCreating = false;
@@ -440,6 +463,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       _responder = null;
     });
     if (publicId != null) {
+      ref
+          .read(analyticsServiceProvider)
+          .logEvent(AnalyticsEvents.pingCancelled);
       unawaited(ref.read(pingServiceProvider).cancelPing(publicId));
       unawaited(ref.read(activePingRepositoryProvider).clear());
     }
@@ -497,6 +523,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       if (!mounted) return;
       switch (result) {
         case Ok():
+          ref
+              .read(analyticsServiceProvider)
+              .logEvent(AnalyticsEvents.pingVoiceNoteSent);
           setState(() => _voiceSent = true);
         case Err(:final failure):
           ScaffoldMessenger.of(
@@ -513,6 +542,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
   }
 
   Future<void> _call112() async {
+    ref
+        .read(analyticsServiceProvider)
+        .logEvent(AnalyticsEvents.call112, parameters: {'source': 'get_help'});
     final uri = Uri(scheme: 'tel', path: '112');
     try {
       final launched = await launchUrl(uri);

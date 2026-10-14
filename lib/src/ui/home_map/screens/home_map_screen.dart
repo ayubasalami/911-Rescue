@@ -7,11 +7,13 @@ import 'package:geolocator/geolocator.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/analytics_events.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
 import '../../../data/models/route_point.dart';
+import '../../../data/services/analytics_service.dart';
 import '../../get_help/widgets/get_help_sheet.dart';
 import '../../triage_chat/widgets/triage_chat_sheet.dart';
 import '../../triage_chat/widgets/triage_entry_sheet.dart';
@@ -373,7 +375,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     await _mapController.flyTo(origin);
   }
 
-  Future<void> _call112() async {
+  /// [source] — where the call was placed from, for Analytics.
+  Future<void> _call112([String source = 'sos_menu']) async {
+    ref
+        .read(analyticsServiceProvider)
+        .logEvent(AnalyticsEvents.call112, parameters: {'source': source});
     _viewModel.closeSosMenu();
     final uri = Uri(scheme: 'tel', path: '112');
     try {
@@ -404,7 +410,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         child: TriageEntrySheet(
           onCall112: () {
             Navigator.of(dialogContext).pop();
-            _call112();
+            _call112('triage');
           },
           onReportIncident: () {
             Navigator.of(dialogContext).pop();
@@ -416,6 +422,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   }
 
   void _openTriageChat() {
+    ref
+        .read(analyticsServiceProvider)
+        .logEvent(AnalyticsEvents.triageChatOpened);
     showDialog<void>(
       context: context,
       builder: (dialogContext) => Dialog(
@@ -434,7 +443,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           },
           onCall112: () {
             Navigator.of(dialogContext).pop();
-            unawaited(_call112());
+            unawaited(_call112('triage'));
           },
         ),
       ),
@@ -450,6 +459,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     FacilityCategory category, {
     required bool asPing,
   }) async {
+    ref
+        .read(analyticsServiceProvider)
+        .logEvent(
+          AnalyticsEvents.triageHandoff,
+          parameters: {
+            'action': asPing ? 'ping' : 'go_to_help',
+            'category': category.name,
+          },
+        );
     final origin = await _viewModel.recenterOnUser();
     if (!mounted || origin == null) return;
 
@@ -1136,7 +1154,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     route: state.goToHelpRoute!,
                     expanded: state.goToHelpCardExpanded,
                     onToggleExpanded: _viewModel.toggleGoToHelpCard,
-                    onCall112: _call112,
+                    onCall112: () => _call112('go_to_help'),
                     onStart: _startTracking,
                     onSendSosInstead: _viewModel.openGoToHelpSosConfirm,
                     onVoiceDirections: _viewModel.toggleGoToHelpVoice,

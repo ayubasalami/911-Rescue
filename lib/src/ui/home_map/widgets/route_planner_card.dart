@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/analytics_events.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/route_point.dart';
 import '../../../data/repositories/facility_repository.dart';
 import '../../../data/repositories/location_repository.dart';
+import '../../../data/services/analytics_service.dart';
 import '../../../data/services/place_search_service.dart';
 import '../../core/widgets/app_button.dart';
 import 'go_to_help_mode_bar.dart';
@@ -321,6 +323,12 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
   }
 
   void _select(RoutePoint point) {
+    ref
+        .read(analyticsServiceProvider)
+        .logEvent(
+          AnalyticsEvents.searchResultSelected,
+          parameters: {'source': 'route_planner'},
+        );
     _debounce?.cancel();
     setState(() => _results = null);
     widget.onSelected(point);
