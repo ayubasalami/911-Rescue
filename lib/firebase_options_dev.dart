@@ -62,6 +62,8 @@ class DefaultFirebaseOptions {
     messagingSenderId: '719724548862',
     projectId: 'rescue-staging',
     storageBucket: 'rescue-staging.firebasestorage.app',
+    androidClientId: '719724548862-4mp5sukg8e9c9cqfp4tbbmt0jgkfig47.apps.googleusercontent.com',
+    iosClientId: '719724548862-fot53blmkor1s7n4lvcdjpr22a3sioqh.apps.googleusercontent.com',
     iosBundleId: 'com.bwanalytics.rescue911.dev',
   );
 }

@@ -12,7 +12,12 @@
           "package_name": "com.bwanalytics.rescue911.dev"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "719724548862-jbglfulaussea2jcn1d4t0u77agggmcd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyC5L32scjsXgRIBmF9lZGEb3b2uHiQLFa8"
@@ -20,7 +25,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "719724548862-jbglfulaussea2jcn1d4t0u77agggmcd.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "719724548862-b5b7c9fdjoabpriscsutac919n5gk0ia.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.bwanalytics.rescue911.staging"
+              }
+            }
+          ]
         }
       }
     },
@@ -31,7 +48,28 @@
           "package_name": "com.bwanalytics.rescue911.staging"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "719724548862-4mp5sukg8e9c9cqfp4tbbmt0jgkfig47.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bwanalytics.rescue911.staging",
+            "certificate_hash": "0e3c1e29438d5ffc4ea1fbcf6e56c11cf3a81f93"
+          }
+        },
+        {
+          "client_id": "719724548862-i3uuh1pj9ossqd11b21m6q4hf1e7c2ov.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bwanalytics.rescue911.staging",
+            "certificate_hash": "ea2a7056b7022a03e639083f0f99dfd26e597677"
+          }
+        },
+        {
+          "client_id": "719724548862-jbglfulaussea2jcn1d4t0u77agggmcd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyC5L32scjsXgRIBmF9lZGEb3b2uHiQLFa8"
@@ -39,7 +77,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "719724548862-jbglfulaussea2jcn1d4t0u77agggmcd.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "719724548862-b5b7c9fdjoabpriscsutac919n5gk0ia.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.bwanalytics.rescue911.staging"
+              }
+            }
+          ]
         }
       }
     }
