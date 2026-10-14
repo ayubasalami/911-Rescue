@@ -740,6 +740,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   GeoPoint? _droppedPinPoint(HomeMapState? state) {
     final goToHelpOrigin = state?.goToHelpOrigin;
     if (goToHelpOrigin != null) return goToHelpOrigin;
+    // A searched place has no facility marker of its own — show the pin
+    // under its popup, as the web does.
+    final facility = state?.selectedFacility;
+    if (facility != null && facility.isPlace) {
+      return GeoPoint(
+        latitude: facility.latitude,
+        longitude: facility.longitude,
+      );
+    }
     final selection = state?.originSelection;
     if (selection == null || selection.followsUser) return null;
     return selection.point;

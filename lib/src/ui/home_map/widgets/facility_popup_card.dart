@@ -99,7 +99,7 @@ class FacilityPopupCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        facility.category.displayLabel.toUpperCase(),
+                        facility.categoryLabel.toUpperCase(),
                         style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 11,

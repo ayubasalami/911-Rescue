@@ -5,13 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/analytics_events.dart';
-import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/repositories/facility_repository.dart';
 import '../../../data/services/analytics_service.dart';
 import '../../../data/services/google_sign_in_service.dart';
+import '../../../data/services/place_search_service.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/facility_category_glyph.dart';
 import '../view_model/home_map_view_model.dart';
@@ -310,19 +310,30 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
       _loading = true;
       _searchFailed = false;
     });
-    final result = await ref.read(facilityRepositoryProvider).search(trimmed);
+    // Facilities first, then up to 3 places from OpenStreetMap — the same
+    // order and sources as the web. Either source failing just drops its
+    // half; only both failing with nothing to show is an error.
+    final (facilities, places) = await (
+      ref.read(facilityRepositoryProvider).search(trimmed),
+      ref.read(placeSearchServiceProvider).search(trimmed),
+    ).wait;
     if (!mounted) return;
     // Drop a stale response that landed after a newer search started.
     if (_controller.text.trim() != trimmed) return;
+    final results = [
+      ...?facilities.valueOrNull,
+      ...?places.valueOrNull?.map(
+        (p) => Facility.place(
+          name: p.name,
+          latitude: p.latitude,
+          longitude: p.longitude,
+        ),
+      ),
+    ];
     setState(() {
       _loading = false;
-      switch (result) {
-        case Ok(:final value):
-          _results = value;
-        case Err():
-          _results = null;
-          _searchFailed = true;
-      }
+      _searchFailed = results.isEmpty && (!facilities.isOk || !places.isOk);
+      _results = _searchFailed ? null : results;
     });
   }
 
@@ -389,7 +400,7 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
               const Padding(
                 padding: EdgeInsets.only(top: 8),
                 child: Text(
-                  'No facilities found.',
+                  'No results found.',
                   style: TextStyle(
                     color: AppColors.textSecondary,
                     fontSize: 13,
@@ -414,11 +425,20 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
                           padding: const EdgeInsets.symmetric(vertical: 10),
                           child: Row(
                             children: [
-                              FacilityCategoryGlyph(
-                                category: facility.category,
-                                color: facility.category.legendColor,
-                                size: 18,
-                              ),
+                              // The web marks places with 📍 instead of a
+                              // facility icon.
+                              if (facility.isPlace)
+                                const Icon(
+                                  Icons.location_on_outlined,
+                                  size: 18,
+                                  color: AppColors.textSecondary,
+                                )
+                              else
+                                FacilityCategoryGlyph(
+                                  category: facility.category,
+                                  color: facility.category.legendColor,
+                                  size: 18,
+                                ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Column(
@@ -434,7 +454,7 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     Text(
-                                      facility.category.displayLabel,
+                                      facility.categoryLabel,
                                       style: const TextStyle(
                                         color: AppColors.textSecondary,
                                         fontSize: 11,

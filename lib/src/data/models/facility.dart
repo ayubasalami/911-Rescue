@@ -22,6 +22,30 @@ class Facility {
     this.rawCategory,
   });
 
+  /// A general place from the OpenStreetMap search, opened in the same
+  /// popup as a facility — the web does exactly this, labelled "Location".
+  factory Facility.place({
+    required String name,
+    required double latitude,
+    required double longitude,
+  }) => Facility(
+    id: '$_placeIdPrefix$name@$latitude,$longitude',
+    name: name,
+    category: FacilityCategory.other,
+    rawCategory: 'Location',
+    latitude: latitude,
+    longitude: longitude,
+  );
+
+  static const _placeIdPrefix = 'place:';
+
+  /// A searched place, not one of the backend's facilities — it has no map
+  /// marker of its own.
+  bool get isPlace => id.startsWith(_placeIdPrefix);
+
+  /// What the popup, info sheet and search list show under the name.
+  String get categoryLabel => isPlace ? 'Location' : category.displayLabel;
+
   final String id;
   final String name;
   final FacilityCategory category;
