@@ -27,11 +27,24 @@ class AppTheme {
   const AppTheme._();
 
   static ThemeData light() {
+    // Material 3 derives every surface role from the seed, which gives
+    // dialogs, sheets, the drawer and menus a faint blue-lavender tint. The
+    // web paints all of its panels plain white (`--panel-bg`), so pin the
+    // surface roles — and drop the elevation tint — to match.
     final colorScheme = ColorScheme.fromSeed(
       seedColor: AppColors.primary,
       primary: AppColors.primary,
       error: AppColors.danger,
       surface: AppColors.backgroundSurface,
+      onSurface: AppColors.textPrimary,
+      onSurfaceVariant: AppColors.textSecondary,
+      surfaceTint: Colors.transparent,
+      surfaceContainerLowest: AppColors.backgroundSurface,
+      surfaceContainerLow: AppColors.backgroundSurface,
+      surfaceContainer: AppColors.backgroundSurface,
+      surfaceContainerHigh: AppColors.backgroundSurface,
+      surfaceContainerHighest: AppColors.backgroundCanvas,
+      outlineVariant: AppColors.border,
     );
 
     return ThemeData(
@@ -39,6 +52,27 @@ class AppTheme {
       fontFamily: 'Inter',
       colorScheme: colorScheme,
       scaffoldBackgroundColor: AppColors.backgroundCanvas,
+      dialogTheme: const DialogThemeData(
+        backgroundColor: AppColors.backgroundSurface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: AppColors.backgroundSurface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      drawerTheme: const DrawerThemeData(
+        backgroundColor: AppColors.backgroundSurface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      cardTheme: const CardThemeData(
+        color: AppColors.backgroundSurface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      popupMenuTheme: const PopupMenuThemeData(
+        color: AppColors.backgroundSurface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      dividerTheme: const DividerThemeData(color: AppColors.border),
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.backgroundSurface,
         foregroundColor: AppColors.textPrimary,
