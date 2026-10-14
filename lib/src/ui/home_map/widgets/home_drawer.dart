@@ -13,7 +13,6 @@ import '../../../data/repositories/facility_repository.dart';
 import '../../../data/services/analytics_service.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/facility_category_glyph.dart';
-import '../../core/widgets/staging_test_crash_button.dart';
 import '../view_model/home_map_view_model.dart';
 import 'map_legend.dart' show FacilityCategoryLegend;
 import 'transport_mode_button.dart';
@@ -774,7 +773,6 @@ class _Footer extends StatelessWidget {
               style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
           ),
-          const StagingTestCrashButton(),
         ],
       ),
     );

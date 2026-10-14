@@ -6,8 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Thin wrapper around [FirebaseCrashlytics.instance].
 ///
 /// Every method is a no-op when no Firebase app was initialized — e.g.
-/// under `flutter test`. Collection is off in debug builds; errors are
-/// still printed locally either way, so nothing is lost silently.
+/// under `flutter test`. Errors are also printed locally, so nothing is
+/// lost silently.
 class CrashReportingService {
   CrashReportingService(this._crashlytics);
 
@@ -15,7 +15,7 @@ class CrashReportingService {
     final crashlytics = Firebase.apps.isNotEmpty
         ? FirebaseCrashlytics.instance
         : null;
-    crashlytics?.setCrashlyticsCollectionEnabled(!kDebugMode);
+    crashlytics?.setCrashlyticsCollectionEnabled(true);
     return CrashReportingService(crashlytics);
   }
 
@@ -44,8 +44,7 @@ class CrashReportingService {
   }
 
   /// A real native crash, so Crashlytics alerting can be checked end to
-  /// end. Staging only (see [StagingTestCrashButton]); the report is sent
-  /// on the next launch.
+  /// end. The report is sent on the next launch.
   void forceCrash() => _crashlytics?.crash();
 
   Future<void> log(String message) {

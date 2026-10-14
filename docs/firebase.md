@@ -44,6 +44,9 @@ within seconds, and are kept out of the normal reports.
 
 `bootstrap.dart` sends Flutter framework errors and uncaught async errors to
 Crashlytics; `ApiClient` reports unparseable responses as non-fatals.
-Collection is off in debug builds — test with a profile/release build.
-Staging builds have a "🧪 Trigger test crash" button at the bottom of the
-drawer; the report arrives after the next launch.
+Collection is on in every build. To test, call
+`ref.read(crashReportingServiceProvider).forceCrash()` from a temporary
+button; reports upload on the app's next launch and can take a few minutes
+to fill in. On iOS, a crash while Xcode or `flutter run`'s debugger is
+attached is caught by the debugger and never reported — stop `flutter run`,
+reopen the app from the home screen, crash it, and open it once more.
