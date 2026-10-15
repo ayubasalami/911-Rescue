@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
+import 'transport_mode_button.dart';
 
-/// Top-right "Route active" chip shown while Go to Help is navigating.
+/// Top-right "Route active" chip — for a Go to Help route, and for an
+/// analysis's route to the nearest facility (the web shows both).
 /// Closing it cancels the whole route — confirmed against the web platform,
 /// where this clears the mode bar, card, and origin selection, not just
 /// the chip itself.
@@ -12,11 +14,13 @@ class RouteActiveChip extends StatelessWidget {
     super.key,
     required this.destinationName,
     required this.route,
+    required this.mode,
     required this.onClose,
   });
 
   final String destinationName;
   final DirectionsRoute route;
+  final TransportMode mode;
   final VoidCallback onClose;
 
   @override
@@ -37,7 +41,7 @@ class RouteActiveChip extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('🚗', style: TextStyle(fontSize: 13)),
+                  Text(mode.emoji, style: const TextStyle(fontSize: 13)),
                   const SizedBox(width: 4),
                   const Expanded(
                     child: Text(
@@ -78,13 +82,23 @@ class RouteActiveChip extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              const Row(
+              // Per the API docs, only Mapbox (not the OSRM fallback)
+              // durations include live traffic — say which, like the web.
+              Row(
                 children: [
-                  Icon(Icons.circle, size: 6, color: AppColors.success),
-                  SizedBox(width: 4),
+                  Icon(
+                    Icons.circle,
+                    size: 6,
+                    color: route.hasLiveTraffic
+                        ? AppColors.success
+                        : AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 4),
                   Text(
-                    'Live traffic applied',
-                    style: TextStyle(
+                    route.hasLiveTraffic
+                        ? 'Live traffic applied'
+                        : 'Estimated (no live traffic)',
+                    style: const TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 11,
                     ),

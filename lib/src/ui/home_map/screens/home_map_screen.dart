@@ -111,6 +111,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// open doesn't also auto-start a ping.
   FacilityCategory? _pendingSosCategory;
 
+  /// Where the analysis ping sits while an analysis runs — screen pixels
+  /// for [_analysisPingPoint], refreshed if the camera moves meanwhile.
+  GeoPoint? _analysisPingPoint;
+  final _analysisPingAnchor = ValueNotifier<Offset?>(null);
+
   /// Set while the Route Planner is waiting for a map tap to fill one of
   /// its fields (the web's "Tap anywhere on the map…" mode). The planner
   /// is hidden but kept alive meanwhile, so what's typed isn't lost.
@@ -134,6 +139,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   @override
   void dispose() {
     _popupAnchor.dispose();
+    _analysisPingAnchor.dispose();
     _pingActive.dispose();
     _cameraZoom.dispose();
     _searchFocusNode.dispose();
@@ -180,6 +186,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// would re-subscribe the native listener on every single frame.
   void _onCameraChanged(mapbox.CameraChangedEventData event) {
     unawaited(_syncPopupAnchor());
+    if (_analysisPingPoint case final point?) {
+      unawaited(
+        _mapController.pixelForCoordinate(point).then((anchor) {
+          if (mounted && _analysisPingPoint != null) {
+            _analysisPingAnchor.value = anchor;
+          }
+        }),
+      );
+    }
     _cameraZoom.value = event.cameraState.zoom;
 
     // Only re-sync facility markers when zoom crosses the visibility
@@ -664,45 +679,71 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     );
   }
 
-  /// Runs (or re-runs, on a mode change) the analysis for [origin], showing
-  /// a blocking loading dialog while it's in flight and rendering the
-  /// resulting isochrone polygon on success. Any failure is surfaced by the
+  /// Runs (or re-runs, on a mode change) the analysis for [origin]. Like
+  /// the web, the map stays usable meanwhile: a pulsing ping marks the
+  /// point and an "Analyzing…" pill shows at the top (both driven by
+  /// [HomeMapState.analysisLoading]). Any failure is surfaced by the
   /// [HomeMapState.errorMessage] listener in [build] instead of here.
   Future<void> _runAnalysis(
     GeoPoint origin, {
     bool openSheet = true,
     bool followsUser = false,
   }) async {
-    unawaited(
-      showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      ),
-    );
+    await _mapController.clearIsochroneAndRoute();
+    if (!mounted) return;
+    _analysisPingPoint = origin;
+    _analysisPingAnchor.value = await _mapController.pixelForCoordinate(origin);
+    if (!mounted) return;
     await _viewModel.runAnalysis(
       origin,
       openSheet: openSheet,
       followsUser: followsUser,
     );
+    _analysisPingPoint = null;
+    _analysisPingAnchor.value = null;
     if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop();
-    final rings = ref
-        .read(homeMapViewModelProvider)
-        .value
-        ?.activeAnalysis
-        ?.isochroneRings;
-    if (rings != null) await _mapController.renderIsochrone(rings);
+    await _renderAnalysis();
   }
 
   Future<void> _changeCommuteMode(TransportMode mode) async {
-    await _viewModel.changeCommuteMode(mode);
-    final rings = ref
+    final origin = ref
         .read(homeMapViewModelProvider)
         .value
-        ?.activeAnalysis
-        ?.isochroneRings;
-    if (rings != null) await _mapController.renderIsochrone(rings);
+        ?.activeAnalysisOrigin;
+    if (origin == null) {
+      await _viewModel.changeCommuteMode(mode);
+      return;
+    }
+    await _mapController.clearIsochroneAndRoute();
+    if (!mounted) return;
+    _analysisPingPoint = origin;
+    _analysisPingAnchor.value = await _mapController.pixelForCoordinate(origin);
+    await _viewModel.changeCommuteMode(mode);
+    _analysisPingPoint = null;
+    _analysisPingAnchor.value = null;
+    if (!mounted) return;
+    await _renderAnalysis();
+  }
+
+  /// Draws the finished analysis the web's way: the time bands in the
+  /// travel mode's colours, the dashed route to the nearest facility, and
+  /// the camera fitted to the smallest (fastest) band — padding 40, never
+  /// closer than zoom 17.
+  Future<void> _renderAnalysis() async {
+    final state = ref.read(homeMapViewModelProvider).value;
+    final analysis = state?.activeAnalysis;
+    if (analysis == null) return;
+    await _mapController.renderIsochrone(
+      analysis.isochroneRings,
+      analysis.mode,
+    );
+    final route = state?.analysisRoute;
+    if (route != null) await _mapController.renderAnalysisRoute(route.points);
+    if (!mounted || analysis.isochroneRings.isEmpty) return;
+    final smallest = analysis.isochroneRings.reduce(
+      (a, b) => a.minutes <= b.minutes ? a : b,
+    );
+    await _mapController.flyToBounds(smallest.points, padding: 40, maxZoom: 17);
   }
 
   /// The sidebar/floating "clear" button — tears down whatever's currently
@@ -908,7 +949,18 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               // of the bottom-docked directions card.
               left: 10,
               bottom: 160 + bottomInset,
-              child: const MapLegend(),
+              child: MapLegend(
+                mode:
+                    state?.activeAnalysis?.mode ??
+                    state?.selectedTransportMode ??
+                    TransportMode.driving,
+                bandMinutes: [
+                  for (final ring
+                      in state?.activeAnalysis?.isochroneRings ??
+                          const <IsochroneRing>[])
+                    ring.minutes,
+                ]..sort(),
+              ),
             ),
           Positioned(
             top: 6 + topInset,
@@ -1241,6 +1293,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 child: RouteActiveChip(
                   destinationName: state.goToHelpDestination!.name,
                   route: state.goToHelpRoute!,
+                  mode: state.selectedTransportMode,
                   // Hides just the chip — ending the route is the card's
                   // confirmed Close.
                   onClose: _viewModel.dismissRouteChip,
@@ -1277,6 +1330,42 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     onConfirmSos: _confirmSosInstead,
                   ),
                 ),
+              ),
+            ),
+          ],
+          if (state != null &&
+              state.activeAnalysis != null &&
+              state.analysisRoute != null &&
+              state.goToHelpRoute == null &&
+              !state.analysisRouteChipDismissed)
+            Positioned(
+              // Under the filter row, clear of the right-side controls.
+              top: 112 + topInset,
+              right: 72,
+              child: RouteActiveChip(
+                destinationName: state.analysisRouteName ?? 'Nearest facility',
+                route: state.analysisRoute!,
+                mode: state.activeAnalysis!.mode,
+                onClose: _viewModel.dismissAnalysisRouteChip,
+              ),
+            ),
+          if (state?.analysisLoading ?? false) ...[
+            ValueListenableBuilder<Offset?>(
+              valueListenable: _analysisPingAnchor,
+              builder: (context, anchor, _) => anchor == null
+                  ? const SizedBox.shrink()
+                  : Positioned(
+                      left: anchor.dx - _AnalysisPing.size / 2,
+                      top: anchor.dy - _AnalysisPing.size / 2,
+                      child: const IgnorePointer(child: _AnalysisPing()),
+                    ),
+            ),
+            Positioned(
+              top: topInset + 8,
+              left: 16,
+              right: 16,
+              child: const IgnorePointer(
+                child: Center(child: _AnalyzingPill()),
               ),
             ),
           ],
@@ -1491,6 +1580,119 @@ class _DropPinBanner extends StatelessWidget {
             child: const Text(
               'Cancel',
               style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// The web's `.analysis-ping`: a 16px blue dot with two rings pulsing out
+/// of it, marking the point while an analysis runs.
+class _AnalysisPing extends StatefulWidget {
+  const _AnalysisPing();
+
+  static const size = 64.0;
+
+  @override
+  State<_AnalysisPing> createState() => _AnalysisPingState();
+}
+
+class _AnalysisPingState extends State<_AnalysisPing>
+    with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Widget _ring(double phase) {
+    final t = (_controller.value + phase) % 1;
+    final eased = Curves.easeOutCubic.transform(t);
+    final diameter = 16 + (_AnalysisPing.size - 16) * eased;
+    return Container(
+      width: diameter,
+      height: diameter,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 1 - t),
+          width: 2,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    return SizedBox.square(
+      dimension: _AnalysisPing.size,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) => Stack(
+          alignment: Alignment.center,
+          children: [
+            if (!reduceMotion) ...[_ring(0), _ring(1 / 3)],
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary.withValues(alpha: 0.9),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The web's `.map-loading` pill: "Analyzing…" with a spinner, frosted
+/// white with a blue border, at the top of the map.
+class _AnalyzingPill extends StatelessWidget {
+  const _AnalyzingPill();
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.85),
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: AppColors.primary),
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.primary.withValues(alpha: 0.35),
+          blurRadius: 18,
+          offset: const Offset(0, 4),
+        ),
+      ],
+    ),
+    child: const Padding(
+      padding: EdgeInsets.fromLTRB(16, 10, 22, 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox.square(
+            dimension: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.primary,
+            ),
+          ),
+          SizedBox(width: 10),
+          Text(
+            'Analyzing…',
+            style: TextStyle(
+              color: AppColors.primary,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],

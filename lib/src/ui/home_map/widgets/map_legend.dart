@@ -8,10 +8,34 @@ import '../../../data/models/facility.dart';
 import '../../core/widgets/facility_category_glyph.dart';
 
 /// Matches the web platform's floating map legend: facility category
-/// glyphs and the 6-band driving-time color ramp. Toggled on/off by the
-/// 5th map control button, defaulting to visible.
+/// glyphs and the travel-time colour ramp. Like the web, the time section
+/// is titled and coloured for the current travel [mode], and after an
+/// analysis lists the bands that actually came back ([bandMinutes]).
+/// Toggled on/off by the 5th map control button, defaulting to visible.
 class MapLegend extends StatelessWidget {
-  const MapLegend({super.key});
+  const MapLegend({
+    super.key,
+    this.mode = TransportMode.driving,
+    this.bandMinutes = const [],
+  });
+
+  final TransportMode mode;
+
+  /// The analysis's band limits in minutes, ascending; empty for the
+  /// default 0-5 … 25-30 ramp.
+  final List<int> bandMinutes;
+
+  /// (from, to) minute pairs: the analysis's own bands when there are
+  /// any, otherwise the default 5-minute steps up to 30.
+  List<(int, int)> _ranges() {
+    final limits = bandMinutes.isNotEmpty
+        ? bandMinutes
+        : [for (final band in TimeBand.bands) band.maxMinutes];
+    return [
+      for (var i = 0; i < limits.length; i++)
+        (i == 0 ? 0 : limits[i - 1], limits[i]),
+    ];
+  }
 
   // Sizes taken from the web stylesheet's mobile overrides for
   // `.info.legend` / `.legend-item` / `.legend-color` / `.legend-title`.
@@ -48,23 +72,23 @@ class MapLegend extends StatelessWidget {
                       label: category.displayLabel,
                     ),
                   const SizedBox(height: 10),
-                  const Text('Driving Time', style: _headerStyle),
+                  Text(mode.timeLegendTitle, style: _headerStyle),
                   const SizedBox(height: 3),
                   const _LegendRow(
                     icon: _DashedLine(),
                     label: 'Shortest Route',
                   ),
-                  for (final band in TimeBand.bands)
+                  for (final (from, to) in _ranges())
                     _LegendRow(
                       icon: Container(
                         width: 10,
                         height: 10,
                         decoration: BoxDecoration(
-                          color: Color(band.color),
+                          color: Color(mode.bandColor(to)),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                      label: band.rangeLabel,
+                      label: '$from-$to mins',
                     ),
                 ],
               ),

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../core/analytics_events.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/result.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
@@ -69,6 +70,10 @@ class HomeMapState {
     this.activeAnalysis,
     this.activeAnalysisOrigin,
     this.activeAnalysisFollowsUser = false,
+    this.analysisLoading = false,
+    this.analysisRoute,
+    this.analysisRouteName,
+    this.analysisRouteChipDismissed = false,
     this.showAnalysisSheet = false,
     this.showChangeModeCard = true,
     this.showLegend = true,
@@ -128,6 +133,20 @@ class HomeMapState {
   final AccessAnalysisResult? activeAnalysis;
   final GeoPoint? activeAnalysisOrigin;
   final bool activeAnalysisFollowsUser;
+
+  /// An analysis is in flight — the map shows the web's pulsing ping and
+  /// "Analyzing…" pill instead of blocking the screen.
+  final bool analysisLoading;
+
+  /// The analysis's dashed route to the nearest facility (the web's
+  /// "Shortest Route") and that facility's name, for the "Route active"
+  /// card. Null when no route could be found.
+  final DirectionsRoute? analysisRoute;
+  final String? analysisRouteName;
+
+  /// The "Route active" card's ✕ — hides just the card, like the Go to
+  /// Help one.
+  final bool analysisRouteChipDismissed;
   final bool showAnalysisSheet;
   final bool showChangeModeCard;
 
@@ -215,6 +234,10 @@ class HomeMapState {
     Object? activeAnalysis = _unset,
     Object? activeAnalysisOrigin = _unset,
     bool? activeAnalysisFollowsUser,
+    bool? analysisLoading,
+    Object? analysisRoute = _unset,
+    Object? analysisRouteName = _unset,
+    bool? analysisRouteChipDismissed,
     bool? showAnalysisSheet,
     bool? showChangeModeCard,
     bool? showLegend,
@@ -259,6 +282,15 @@ class HomeMapState {
           : activeAnalysisOrigin as GeoPoint?,
       activeAnalysisFollowsUser:
           activeAnalysisFollowsUser ?? this.activeAnalysisFollowsUser,
+      analysisLoading: analysisLoading ?? this.analysisLoading,
+      analysisRoute: identical(analysisRoute, _unset)
+          ? this.analysisRoute
+          : analysisRoute as DirectionsRoute?,
+      analysisRouteName: identical(analysisRouteName, _unset)
+          ? this.analysisRouteName
+          : analysisRouteName as String?,
+      analysisRouteChipDismissed:
+          analysisRouteChipDismissed ?? this.analysisRouteChipDismissed,
       showAnalysisSheet: showAnalysisSheet ?? this.showAnalysisSheet,
       showChangeModeCard: showChangeModeCard ?? this.showChangeModeCard,
       showLegend: showLegend ?? this.showLegend,
@@ -647,6 +679,15 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     bool followsUser = false,
   }) async {
     clearPopups();
+    _update(
+      (s) => s.copyWith(
+        analysisLoading: true,
+        analysisRoute: null,
+        analysisRouteName: null,
+        analysisRouteChipDismissed: false,
+      ),
+    );
+    final mode = state.value?.selectedTransportMode ?? TransportMode.driving;
 
     final AccessAnalysisResult result;
     switch (await ref
@@ -661,9 +702,15 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       case Ok(:final value):
         result = value;
       case Err(:final failure):
+        _update((s) => s.copyWith(analysisLoading: false));
         _setError(failure.userMessage);
         return;
     }
+
+    final (route: nearestRoute, name: nearestName) = await _routeToNearest(
+      origin,
+      mode,
+    );
 
     _log(AnalyticsEvents.accessAnalysisRun, {
       'mode':
@@ -677,11 +724,72 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         activeAnalysis: result,
         activeAnalysisOrigin: origin,
         activeAnalysisFollowsUser: followsUser,
+        analysisLoading: false,
+        analysisRoute: nearestRoute,
+        analysisRouteName: nearestName,
         showChangeModeCard: true,
         showAnalysisSheet: openSheet ? true : s.showAnalysisSheet,
       ),
     );
   }
+
+  /// The web's analysis also routes to the nearest facility — by straight
+  /// line, among the facilities the current filter shows — and draws that
+  /// route dashed. A failure only costs the route, never the analysis; the
+  /// messages are the web's.
+  Future<({DirectionsRoute? route, String? name})> _routeToNearest(
+    GeoPoint origin,
+    TransportMode mode,
+  ) async {
+    final filter = state.value?.selectedFilter;
+    Facility? nearest;
+    var nearestDistance = double.infinity;
+    for (final facility in state.value?.facilities ?? const <Facility>[]) {
+      if (filter != null && facility.category != filter) continue;
+      final distance = Geolocator.distanceBetween(
+        origin.latitude,
+        origin.longitude,
+        facility.latitude,
+        facility.longitude,
+      );
+      if (distance < nearestDistance) {
+        nearest = facility;
+        nearestDistance = distance;
+      }
+    }
+    if (nearest == null) return (route: null, name: null);
+
+    final result = await ref
+        .read(accessAnalysisServiceProvider)
+        .fetchRoute(
+          origin: origin,
+          destination: GeoPoint(
+            latitude: nearest.latitude,
+            longitude: nearest.longitude,
+          ),
+          mode: mode,
+        );
+    switch (result) {
+      case Ok(:final value):
+        return (route: value, name: nearest.name);
+      case Err(failure: NetworkFailure() || TimeoutFailure()):
+        _setError(
+          'Could not calculate a route. Check your connection and try again.',
+        );
+      case Err():
+        _setError(switch (mode) {
+          TransportMode.walking =>
+            'That facility is too far to walk to. Try Car or Motorcycle.',
+          TransportMode.cycling =>
+            'That facility is too far to cycle to. Try Car or Motorcycle.',
+          _ => 'No route could be found to the nearest facility.',
+        });
+    }
+    return (route: null, name: null);
+  }
+
+  void dismissAnalysisRouteChip() =>
+      _update((s) => s.copyWith(analysisRouteChipDismissed: true));
 
   Future<void> changeCommuteMode(TransportMode mode) async {
     setSelectedMode(mode);
@@ -703,6 +811,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         activeAnalysisOrigin: null,
         activeAnalysisFollowsUser: false,
         showAnalysisSheet: false,
+        analysisRoute: null,
+        analysisRouteName: null,
       ),
     );
   }

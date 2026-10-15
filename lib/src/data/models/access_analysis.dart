@@ -37,7 +37,63 @@ extension TransportModeRouting on TransportMode {
     TransportMode.cycling => 'cycling',
     TransportMode.motorbike => 'motorbike',
   };
+
+  /// The legend heading — the web's "{Mode} Time", with motorcycle shown
+  /// as "Motorcycling".
+  String get timeLegendTitle => switch (this) {
+    TransportMode.driving => 'Driving Time',
+    TransportMode.walking => 'Walking Time',
+    TransportMode.cycling => 'Cycling Time',
+    TransportMode.motorbike => 'Motorcycling Time',
+  };
+
+  /// The colour of the [minutes] time band for this mode — the web's
+  /// per-mode palettes (reds, greens, purples, blues), darkest nearest. A
+  /// band between the palette's 5-minute steps takes the nearest step.
+  int bandColor(int minutes) {
+    final palette = _bandPalettes[this]!;
+    var nearest = palette.keys.first;
+    for (final step in palette.keys) {
+      if ((step - minutes).abs() < (nearest - minutes).abs()) nearest = step;
+    }
+    return palette[nearest]!;
+  }
 }
+
+const _bandPalettes = {
+  TransportMode.driving: {
+    5: 0xFFA50F15,
+    10: 0xFFDE2D26,
+    15: 0xFFFB6A4A,
+    20: 0xFFFCA082,
+    25: 0xFFFCC5C0,
+    30: 0xFFFEE5D9,
+  },
+  TransportMode.walking: {
+    5: 0xFF005A32,
+    10: 0xFF238B45,
+    15: 0xFF41AB5D,
+    20: 0xFF74C476,
+    25: 0xFFA1D99B,
+    30: 0xFFC7E9C0,
+  },
+  TransportMode.motorbike: {
+    5: 0xFF4A1486,
+    10: 0xFF6A51A3,
+    15: 0xFF807DBA,
+    20: 0xFF9E9AC8,
+    25: 0xFFBCBDDC,
+    30: 0xFFDADAEB,
+  },
+  TransportMode.cycling: {
+    5: 0xFF084594,
+    10: 0xFF2171B5,
+    15: 0xFF4292C6,
+    20: 0xFF6BAED6,
+    25: 0xFF9ECAE1,
+    30: 0xFFC6DBEF,
+  },
+};
 
 class ReachableFacility {
   const ReachableFacility({
@@ -52,25 +108,22 @@ class ReachableFacility {
 }
 
 class TimeBand {
-  const TimeBand(this.maxMinutes, this.label, this.rangeLabel, this.color);
+  const TimeBand(this.maxMinutes, this.label, this.rangeLabel);
 
   final int maxMinutes;
   final String label;
 
-  /// e.g. "0-5 mins", matching the web platform's Driving Time legend rows.
+  /// e.g. "0-5 mins", matching the web platform's time legend rows. Colours
+  /// depend on the travel mode — see [TransportModeRouting.bandColor].
   final String rangeLabel;
 
-  /// Matches the web platform's Driving Time legend swatches exactly, so
-  /// the legend and the isochrone polygon on the map use identical colors.
-  final int color;
-
   static const bands = [
-    TimeBand(5, 'Within 5 mins', '0-5 mins', 0xFF7F1D1D),
-    TimeBand(10, 'Within 10 mins', '5-10 mins', 0xFFDC2626),
-    TimeBand(15, 'Within 15 mins', '10-15 mins', 0xFFF97316),
-    TimeBand(20, 'Within 20 mins', '15-20 mins', 0xFFFB923C),
-    TimeBand(25, 'Within 25 mins', '20-25 mins', 0xFFFDBA74),
-    TimeBand(30, 'Within 30 mins', '25-30 mins', 0xFFFED7AA),
+    TimeBand(5, 'Within 5 mins', '0-5 mins'),
+    TimeBand(10, 'Within 10 mins', '5-10 mins'),
+    TimeBand(15, 'Within 15 mins', '10-15 mins'),
+    TimeBand(20, 'Within 20 mins', '15-20 mins'),
+    TimeBand(25, 'Within 25 mins', '20-25 mins'),
+    TimeBand(30, 'Within 30 mins', '25-30 mins'),
   ];
 
   static TimeBand forMinutes(double minutes) {
@@ -113,12 +166,19 @@ class DirectionsRoute {
     required this.steps,
     required this.distanceMeters,
     required this.durationSeconds,
+    this.source,
   });
 
   final List<GeoPoint> points;
   final List<DirectionsStep> steps;
   final double distanceMeters;
   final double durationSeconds;
+
+  /// `mapbox` or `osrm`. Per the API docs only Mapbox durations account for
+  /// live traffic, so only those may be presented as traffic-aware.
+  final String? source;
+
+  bool get hasLiveTraffic => source == 'mapbox';
 }
 
 extension DirectionsRouteFormatting on DirectionsRoute {

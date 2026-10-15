@@ -176,6 +176,7 @@ class AccessAnalysisService {
           steps: [for (final step in steps) _directionsStepFrom(step)],
           distanceMeters: r.double_('distance'),
           durationSeconds: r.double_('duration'),
+          source: r.stringOrNull('source'),
         );
       },
     );

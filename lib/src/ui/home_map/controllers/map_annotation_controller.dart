@@ -14,13 +14,6 @@ import '../widgets/map_legend.dart';
 mapbox.Point mapboxPointFrom(GeoPoint point) =>
     mapbox.Point(coordinates: mapbox.Position(point.longitude, point.latitude));
 
-int _colorForBandMinutes(int minutes) => TimeBand.bands
-    .firstWhere(
-      (band) => band.maxMinutes == minutes,
-      orElse: () => TimeBand.bands.last,
-    )
-    .color;
-
 /// Rasterizes a facility category's glyph directly in its own color, with
 /// no circle/badge behind it — matches 911rescueme.com's own map markers
 /// (confirmed live: a plain red cross, no white badge or background
@@ -104,6 +97,11 @@ class MapAnnotationController {
   mapbox.PolygonAnnotationManager? _polygonManager;
   mapbox.PolylineAnnotationManager? _polylineManager;
 
+  /// The dashed "Shortest Route" to the nearest facility drawn by an
+  /// analysis — its own manager because the dash pattern is set per
+  /// manager, not per line.
+  mapbox.PolylineAnnotationManager? _analysisRouteManager;
+
   /// Separate from [_polylineManager] deliberately — that one is deleted
   /// and recreated on nearly every Go to Help update, but the Lagos
   /// boundary is static and toggled independently; sharing a manager would
@@ -178,6 +176,13 @@ class MapAnnotationController {
     _polylineManager = await mapboxMap.annotations
         .createPolylineAnnotationManager();
 
+    final analysisRouteManager = await mapboxMap.annotations
+        .createPolylineAnnotationManager();
+    // The web's `dashArray: 5,5` at weight 4 — Mapbox measures dashes in
+    // line widths.
+    await analysisRouteManager.setLineDasharray([1.25, 1.25]);
+    _analysisRouteManager = analysisRouteManager;
+
     _boundaryManager = await mapboxMap.annotations
         .createPolylineAnnotationManager();
 
@@ -230,7 +235,11 @@ class MapAnnotationController {
   /// Zooms/pans to fit every point in [points] on screen at once — used for
   /// the Go to Help route overview, matching the web platform's zoom-out
   /// when a route is active.
-  Future<void> flyToBounds(List<GeoPoint> points, {double padding = 60}) async {
+  Future<void> flyToBounds(
+    List<GeoPoint> points, {
+    double padding = 60,
+    double? maxZoom,
+  }) async {
     final map = _map;
     if (map == null || points.isEmpty) return;
     final coordinates = points.map(mapboxPointFrom).toList();
@@ -243,7 +252,7 @@ class MapAnnotationController {
         bottom: padding,
         right: padding,
       ),
-      null,
+      maxZoom,
       null,
     );
     // Clear any shift left over from [flyTo] — the fit above assumes an
@@ -382,7 +391,13 @@ class MapAnnotationController {
     );
   }
 
-  Future<void> renderIsochrone(List<IsochroneRing> rings) async {
+  /// The analysis time bands, largest first so the smaller ones sit on
+  /// top — the web's colours for [mode] at 30% fill with a matching
+  /// outline.
+  Future<void> renderIsochrone(
+    List<IsochroneRing> rings,
+    TransportMode mode,
+  ) async {
     final manager = _polygonManager;
     if (manager == null) return;
     await manager.deleteAll();
@@ -398,11 +413,38 @@ class MapAnnotationController {
               ],
             ],
           ),
-          fillColor: _colorForBandMinutes(ring.minutes),
-          fillOpacity: 0.35,
+          fillColor: mode.bandColor(ring.minutes),
+          fillOpacity: 0.3,
+          fillOutlineColor: mode.bandColor(ring.minutes),
         ),
     ]);
   }
+
+  /// The web's `--route-color`, used for the analysis's dashed route.
+  static const _analysisRouteBlue = Color(0xFF0066FF);
+
+  /// The analysis's dashed "Shortest Route" to the nearest facility.
+  Future<void> renderAnalysisRoute(List<GeoPoint> points) async {
+    final manager = _analysisRouteManager;
+    if (manager == null) return;
+    await manager.deleteAll();
+    await manager.create(
+      mapbox.PolylineAnnotationOptions(
+        geometry: mapbox.LineString(
+          coordinates: [
+            for (final point in points)
+              mapbox.Position(point.longitude, point.latitude),
+          ],
+        ),
+        lineColor: _analysisRouteBlue.toARGB32(),
+        lineWidth: 4,
+        lineOpacity: 0.9,
+      ),
+    );
+  }
+
+  Future<void> clearAnalysisRoute() async =>
+      _analysisRouteManager?.deleteAll();
 
   static const _routeGreen = Color(0xFF00AA55);
 
@@ -434,6 +476,7 @@ class MapAnnotationController {
   Future<void> clearIsochroneAndRoute() async {
     await _polygonManager?.deleteAll();
     await _polylineManager?.deleteAll();
+    await _analysisRouteManager?.deleteAll();
   }
 
   /// Renders (or clears, when [ring] is null) the Lagos state boundary as
