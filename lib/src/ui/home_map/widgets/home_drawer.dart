@@ -10,8 +10,9 @@ import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/repositories/facility_repository.dart';
 import '../../../data/services/analytics_service.dart';
-import '../../../data/services/google_sign_in_service.dart';
+import '../../../data/models/app_user.dart';
 import '../../../data/services/place_search_service.dart';
+import '../../core/view_model/auth_view_model.dart';
 import '../../core/view_model/theme_mode_view_model.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/facility_category_glyph.dart';
@@ -74,23 +75,6 @@ class HomeDrawer extends ConsumerWidget {
 
   static const _thresholdOptionsMinutes = [15, 30, 45, 60];
 
-  /// Native Google sign-in only, for now — the backend has no endpoint
-  /// yet that turns the ID token into a session, so this just confirms the
-  /// Google side works.
-  Future<void> _signInWithGoogle(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final outcome = await ref.read(googleSignInServiceProvider).signIn();
-    final message = switch (outcome) {
-      GoogleSignInSucceeded(:final identity) =>
-        'Signed in with Google as ${identity.email}.',
-      GoogleSignInCancelled() => null,
-      GoogleSignInFailed(:final message) => message,
-    };
-    if (message != null) {
-      messenger.showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(homeMapViewModelProvider).value;
@@ -108,34 +92,7 @@ class HomeDrawer extends ConsumerWidget {
               onClose: () => Scaffold.of(context).closeDrawer(),
             ),
             const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () => _signInWithGoogle(context, ref),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: context.palette.textPrimary,
-                    side: BorderSide(color: context.palette.border),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Image.asset(
-                        'assets/images/google_logo.png',
-                        width: 18,
-                        height: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Sign in with Google',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            const _AccountSection(),
             const Divider(height: 1),
             _SearchSection(
               onUseCurrentLocation: () {
@@ -751,6 +708,155 @@ class _HelpLinksSection extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The web sidebar's account block: "Sign in with Google" when signed
+/// out; avatar, name, email and Logout when signed in.
+class _AccountSection extends ConsumerStatefulWidget {
+  const _AccountSection();
+
+  @override
+  ConsumerState<_AccountSection> createState() => _AccountSectionState();
+}
+
+class _AccountSectionState extends ConsumerState<_AccountSection> {
+  var _signingIn = false;
+
+  Future<void> _signIn() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _signingIn = true);
+    final message = await ref.read(authViewModelProvider.notifier).signIn();
+    if (mounted) setState(() => _signingIn = false);
+    if (message != null) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = ref.watch(authViewModelProvider);
+    final user = auth.value;
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: user != null
+          ? _Profile(
+              user: user,
+              onLogout: () =>
+                  ref.read(authViewModelProvider.notifier).signOut(),
+            )
+          : SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: (_signingIn || auth.isLoading) ? null : _signIn,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: context.palette.textPrimary,
+                  side: BorderSide(color: context.palette.border),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (_signingIn || auth.isLoading)
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      Image.asset(
+                        'assets/images/google_logo.png',
+                        width: 18,
+                        height: 18,
+                      ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _signingIn ? 'Signing in…' : 'Sign in with Google',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+class _Profile extends StatelessWidget {
+  const _Profile({required this.user, required this.onLogout});
+
+  final AppUser user;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = user.name?.trim();
+    final initial = (name?.isNotEmpty ?? false ? name! : user.email)
+        .substring(0, 1)
+        .toUpperCase();
+    final picture = user.picture;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: context.palette.inputBg,
+              foregroundImage: picture == null ? null : NetworkImage(picture),
+              child: Text(
+                initial,
+                style: TextStyle(
+                  color: context.palette.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (name != null && name.isNotEmpty)
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  Text(
+                    user.email,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: context.palette.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: onLogout,
+            style: TextButton.styleFrom(
+              foregroundColor: context.palette.danger,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: const Text(
+              'Logout',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

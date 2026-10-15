@@ -54,6 +54,10 @@ abstract final class AnalyticsEvents {
 
   /// Param: `theme` (`light` / `dark`).
   static const themeToggled = 'theme_toggled';
+
+  /// Firebase's standard sign-in event. Param: `method` (`google`).
+  static const login = 'login';
+  static const logout = 'logout';
   static const triageChatOpened = 'triage_chat_opened';
 
   /// A Triage routing button. Params: `category`, `emergency`.
