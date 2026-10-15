@@ -167,6 +167,7 @@ class DirectionsRoute {
     required this.distanceMeters,
     required this.durationSeconds,
     this.source,
+    this.fetchedAt,
   });
 
   final List<GeoPoint> points;
@@ -179,6 +180,10 @@ class DirectionsRoute {
   final String? source;
 
   bool get hasLiveTraffic => source == 'mapbox';
+
+  /// When the route came back — the arrival time is fixed from here, as
+  /// on the web, rather than drifting later on every redraw.
+  final DateTime? fetchedAt;
 }
 
 extension DirectionsRouteFormatting on DirectionsRoute {
@@ -192,10 +197,11 @@ extension DirectionsRouteFormatting on DirectionsRoute {
     return hours > 0 ? '$hours hr $minutes min' : '$minutes min';
   }
 
-  /// A clock-formatted ETA computed from "now" — the web platform shows
-  /// this alongside the route summary (e.g. "Arrive 05:40 AM").
+  /// A clock-formatted ETA from when the route was fetched — the web
+  /// platform shows this alongside the route summary (e.g. "Arrive 05:40
+  /// AM").
   String get formattedArrival {
-    final arrival = DateTime.now().add(
+    final arrival = (fetchedAt ?? DateTime.now()).add(
       Duration(seconds: durationSeconds.round()),
     );
     final hour12 = arrival.hour % 12 == 0 ? 12 : arrival.hour % 12;

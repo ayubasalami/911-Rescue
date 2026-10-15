@@ -177,6 +177,7 @@ class AccessAnalysisService {
           distanceMeters: r.double_('distance'),
           durationSeconds: r.double_('duration'),
           source: r.stringOrNull('source'),
+          fetchedAt: DateTime.now(),
         );
       },
     );

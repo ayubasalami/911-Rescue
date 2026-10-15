@@ -8,6 +8,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
+import '../../../utils/route_progress.dart';
 import '../../core/widgets/facility_category_glyph.dart';
 import '../widgets/map_legend.dart';
 
@@ -98,6 +99,11 @@ class MapAnnotationController {
   mapbox.PolygonAnnotationManager? _polygonManager;
   mapbox.PolylineAnnotationManager? _polylineManager;
 
+  /// The part of a tracked route already driven, grey under the road
+  /// ahead — the web tracker's trimmed line. Created before
+  /// [_polylineManager] so it draws beneath it.
+  mapbox.PolylineAnnotationManager? _travelledManager;
+
   /// The dashed "Shortest Route" to the nearest facility drawn by an
   /// analysis — its own manager because the dash pattern is set per
   /// manager, not per line.
@@ -169,6 +175,7 @@ class MapAnnotationController {
   List<IsochroneRing>? _lastRings;
   TransportMode? _lastRingsMode;
   List<GeoPoint>? _lastRoute;
+  RouteProgress? _lastProgress;
   List<GeoPoint>? _lastAnalysisRoute;
 
   GeoPoint? _lastDroppedPin;
@@ -199,6 +206,8 @@ class MapAnnotationController {
 
     _originManager = await mapboxMap.annotations.createPointAnnotationManager();
 
+    _travelledManager = await mapboxMap.annotations
+        .createPolylineAnnotationManager();
     _polylineManager = await mapboxMap.annotations
         .createPolylineAnnotationManager();
 
@@ -301,8 +310,16 @@ class MapAnnotationController {
     if (rings != null && mode != null) await renderIsochrone(rings, mode);
 
     final route = _lastRoute;
+    final progress = _lastProgress;
+    _lastRoute = null;
+    _lastProgress = null;
     await _polylineManager?.deleteAll();
-    if (route != null) await renderRoute(route);
+    await _travelledManager?.deleteAll();
+    if (route != null) {
+      await (progress == null
+          ? renderRoute(route)
+          : renderRouteProgress(route, progress));
+    }
 
     final analysisRoute = _lastAnalysisRoute;
     await _analysisRouteManager?.deleteAll();
@@ -557,10 +574,15 @@ class MapAnnotationController {
     await _analysisRouteManager?.deleteAll();
   }
 
+  /// Skips the redraw when it's the same line already drawn — the screen
+  /// calls this on every rebuild while tracking.
   Future<void> renderRoute(List<GeoPoint> points) async {
     final manager = _polylineManager;
     if (manager == null) return;
+    if (identical(points, _lastRoute) && _lastProgress == null) return;
     _lastRoute = points;
+    _lastProgress = null;
+    await _travelledManager?.deleteAll();
     await manager.deleteAll();
     await manager.create(
       mapbox.PolylineAnnotationOptions(
@@ -581,8 +603,53 @@ class MapAnnotationController {
     );
   }
 
+  /// A tracked route split at [progress]: the driven part grey (the web's
+  /// `#8d96a0` at 55%), the road ahead in the route colour.
+  Future<void> renderRouteProgress(
+    List<GeoPoint> points,
+    RouteProgress progress,
+  ) async {
+    final ahead = _polylineManager;
+    final travelled = _travelledManager;
+    if (ahead == null || travelled == null) return;
+    if (identical(points, _lastRoute) && identical(progress, _lastProgress)) {
+      return;
+    }
+    _lastRoute = points;
+    _lastProgress = progress;
+    final split = progress.segmentIndex + 1;
+
+    mapbox.LineString line(Iterable<GeoPoint> part) => mapbox.LineString(
+      coordinates: [
+        for (final point in part)
+          mapbox.Position(point.longitude, point.latitude),
+      ],
+    );
+
+    await travelled.deleteAll();
+    await travelled.create(
+      mapbox.PolylineAnnotationOptions(
+        geometry: line([...points.take(split), progress.foot]),
+        lineColor: const Color(0xFF8D96A0).toARGB32(),
+        lineWidth: 5,
+        lineOpacity: 0.55,
+      ),
+    );
+    await ahead.deleteAll();
+    await ahead.create(
+      mapbox.PolylineAnnotationOptions(
+        geometry: line([progress.foot, ...points.skip(split)]),
+        lineColor: _palette.accentGreen.toARGB32(),
+        lineWidth: 5,
+        lineOpacity: 0.9,
+      ),
+    );
+  }
+
   Future<void> clearRoute() async {
     _lastRoute = null;
+    _lastProgress = null;
+    await _travelledManager?.deleteAll();
     await _polylineManager?.deleteAll();
   }
 
@@ -590,7 +657,9 @@ class MapAnnotationController {
     _lastRings = null;
     _lastRingsMode = null;
     _lastRoute = null;
+    _lastProgress = null;
     _lastAnalysisRoute = null;
+    await _travelledManager?.deleteAll();
     await _polygonManager?.deleteAll();
     await _polylineManager?.deleteAll();
     await _analysisRouteManager?.deleteAll();

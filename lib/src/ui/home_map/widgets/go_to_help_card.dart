@@ -27,6 +27,11 @@ class GoToHelpCard extends StatelessWidget {
     this.tracking = false,
     this.accuracyMeters,
     this.arrivedTripMinutes,
+    this.offRoute = false,
+    this.offRouteNotice,
+    this.recalculating = false,
+    this.remainingMeters,
+    this.onRecalculate,
     this.voiceEnabled = false,
     this.sosConfirming = false,
     this.closeConfirming = false,
@@ -59,6 +64,20 @@ class GoToHelpCard extends StatelessWidget {
   /// Set once live tracking reached the destination: the card becomes the
   /// web's green "You have arrived" with the trip time and Done ([onClose]).
   final int? arrivedTripMinutes;
+
+  /// Live tracking has left the route: the card turns pink, explains, and
+  /// offers [onRecalculate] — the web tracker's off-route state.
+  final bool offRoute;
+
+  /// The off-route status line, e.g. "Still off the route — recalculating
+  /// automatically…".
+  final String? offRouteNotice;
+  final bool recalculating;
+  final VoidCallback? onRecalculate;
+
+  /// Distance left along the road while tracking; the whole route's
+  /// distance until the first fix.
+  final double? remainingMeters;
 
   /// Whether spoken turn-by-turn instructions are on — flips the voice
   /// button's label between "on"/"off".
@@ -93,6 +112,8 @@ class GoToHelpCard extends StatelessWidget {
           border: Border.all(
             color: arrivedTripMinutes != null
                 ? context.palette.accentGreen
+                : tracking && offRoute
+                ? context.palette.danger
                 : context.palette.primary,
             width: 2,
           ),
@@ -145,11 +166,22 @@ class GoToHelpCard extends StatelessWidget {
     );
   }
 
-  String _gpsSignalLabel(double meters) {
-    final rounded = meters.round();
-    return meters <= 30
-        ? 'Good GPS signal (±$rounded m)'
-        : 'Weak GPS signal (±$rounded m)';
+  /// The web's distance format: metres under 1 km, then one decimal km.
+  static String _formatMeters(double meters) => meters >= 1000
+      ? '${(meters / 1000).toStringAsFixed(1)} km'
+      : '${meters.round()} m';
+
+  String get _toGo => _formatMeters(remainingMeters ?? route.distanceMeters);
+
+  /// "Waiting for your GPS fix…" before the first fix; afterwards only a
+  /// weak fix (worse than 100 m) is worth a line, as on the web.
+  String? get _gpsLine {
+    final meters = accuracyMeters;
+    if (meters == null) return 'Waiting for your GPS fix…';
+    if (meters > 100 && !offRoute) {
+      return 'Weak GPS signal (±${meters.round()} m)';
+    }
+    return null;
   }
 
   static const _sosCategories = [
@@ -274,21 +306,25 @@ class GoToHelpCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: context.palette.primary,
-                          shape: BoxShape.circle,
+                      if (!offRoute) ...[
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: context.palette.primary,
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
+                        const SizedBox(width: 6),
+                      ],
                       Text(
-                        'FOLLOWING YOU',
+                        offRoute ? '⚠ OFF ROUTE' : 'FOLLOWING YOU',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: context.palette.primary,
+                          color: offRoute
+                              ? context.palette.danger
+                              : context.palette.primary,
                           letterSpacing: 0.5,
                         ),
                       ),
@@ -311,42 +347,73 @@ class GoToHelpCard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: route.formattedDistance,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: context.palette.primary,
+        if (offRoute)
+          Text(
+            'You have left the planned route. Recalculate from where you '
+            'are now, or carry on if you know a better way.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.5,
+              color: context.palette.textPrimary,
+            ),
+          )
+        else
+          Row(
+            children: [
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: _toGo,
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: context.palette.primary,
+                        ),
                       ),
-                    ),
-                    TextSpan(
-                      text: ' to go',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: context.palette.textSecondary,
+                      TextSpan(
+                        text: ' to go',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: context.palette.textSecondary,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            _buildArriveColumn(context),
-          ],
-        ),
-        if (accuracyMeters != null) ...[
+              _buildArriveColumn(context),
+            ],
+          ),
+        if (_gpsLine case final line?) ...[
           const SizedBox(height: 2),
           Text(
-            _gpsSignalLabel(accuracyMeters!),
+            line,
             style: TextStyle(
               fontSize: 11,
               color: context.palette.textSecondary,
             ),
+          ),
+        ],
+        if (offRoute && offRouteNotice != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            offRouteNotice!,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: context.palette.danger,
+            ),
+          ),
+        ],
+        if (offRoute) ...[
+          const SizedBox(height: 10),
+          AppButton(
+            label: recalculating ? 'Recalculating…' : 'Recalculate route',
+            onPressed: recalculating ? null : onRecalculate,
+            padding: _buttonPadding,
+            fontSize: 13,
           ),
         ],
         const SizedBox(height: 8),
@@ -368,9 +435,8 @@ class GoToHelpCard extends StatelessWidget {
   }
 
   /// The numbered turn-by-turn list — shown inline in both the preview and
-  /// the navigating layouts, matching the web card. While tracking, [route]
-  /// is re-fetched from the live position, so step 1 is always "what to do
-  /// now".
+  /// the navigating layouts, matching the web card. The route is fetched
+  /// once and only replaced by a recalculation after going off route.
   Widget _buildStepList(BuildContext context) {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 150),
@@ -445,7 +511,7 @@ class GoToHelpCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  route.formattedDistance,
+                  _toGo,
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
@@ -453,7 +519,7 @@ class GoToHelpCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'arrive ${route.formattedArrival}',
+                  offRoute ? 'Off route' : 'arrive ${route.formattedArrival}',
                   style: TextStyle(
                     fontSize: 12,
                     color: context.palette.textSecondary,

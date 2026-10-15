@@ -390,6 +390,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     await _mapController.flyToBounds(route.points);
   }
 
+  /// Stop following: back to the static preview, with the whole line drawn
+  /// again from where the user is.
+  Future<void> _stopGoToHelpTracking() async {
+    _viewModel.stopGoToHelpTracking();
+    final state = ref.read(homeMapViewModelProvider).value;
+    final origin = state?.goToHelpOrigin;
+    final route = state?.goToHelpRoute;
+    if (origin == null || route == null) return;
+    await _mapController.renderRoute([origin, ...route.points]);
+  }
+
   Future<void> _changeGoToHelpMode(TransportMode mode) async {
     _viewModel.setSelectedMode(mode);
     await _viewModel.refreshGoToHelpRoute();
@@ -944,15 +955,19 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           state.showLagosBoundary ? state.lagosBoundary : null,
         ),
       );
-      // While tracking, the origin/route keep changing from the live GPS
-      // stream (see HomeMapViewModel._onTrackedPosition) rather than from
-      // an explicit screen action, so the line has to be kept in sync here
-      // reactively instead of imperatively like _startGoToHelp does.
+      // While tracking, progress and recalculated routes come from the
+      // live GPS stream (see HomeMapViewModel._onTrackedPosition) rather
+      // than from an explicit screen action, so the line is kept in sync
+      // here reactively: driven part grey, road ahead in colour.
       if (state.goToHelpTracking) {
-        final origin = state.goToHelpOrigin;
         final route = state.goToHelpRoute;
-        if (origin != null && route != null) {
-          unawaited(_mapController.renderRoute([origin, ...route.points]));
+        final progress = state.goToHelpProgress;
+        if (route != null) {
+          unawaited(
+            progress == null
+                ? _mapController.renderRoute(route.points)
+                : _mapController.renderRouteProgress(route.points, progress),
+          );
         }
       }
     }
@@ -1422,7 +1437,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     accuracyMeters: state.goToHelpAccuracyMeters,
                     arrivedTripMinutes: state.goToHelpArrivedTripMinutes,
                     voiceEnabled: state.goToHelpVoiceEnabled,
-                    onStop: _viewModel.stopGoToHelpTracking,
+                    onStop: _stopGoToHelpTracking,
+                    offRoute: state.goToHelpOffRoute,
+                    offRouteNotice: state.goToHelpOffRouteNotice,
+                    recalculating: state.goToHelpRecalculating,
+                    remainingMeters: state.goToHelpProgress?.remainingMeters,
+                    onRecalculate: _viewModel.recalculateGoToHelpRoute,
                     sosConfirming: state.goToHelpSosConfirming,
                     closeConfirming: state.goToHelpCloseConfirming,
                     onRequestClose: _viewModel.requestCloseGoToHelp,

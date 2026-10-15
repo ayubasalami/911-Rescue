@@ -1,4 +1,4 @@
-import 'dart:async' show StreamSubscription, unawaited;
+import 'dart:async' show StreamSubscription, Timer, unawaited;
 import 'dart:math' show max, min;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +22,7 @@ import '../../../data/services/analytics_service.dart';
 import '../../../data/services/interaction_service.dart';
 import '../../../data/services/ping_service.dart';
 import '../../../data/services/voice_directions_service.dart';
+import '../../../utils/route_progress.dart';
 import '../../../utils/triage_facility_picker.dart';
 import '../../core/view_model/auth_view_model.dart';
 
@@ -99,6 +100,10 @@ class HomeMapState {
     this.goToHelpTracking = false,
     this.goToHelpAccuracyMeters,
     this.goToHelpArrivedTripMinutes,
+    this.goToHelpProgress,
+    this.goToHelpOffRoute = false,
+    this.goToHelpOffRouteNotice,
+    this.goToHelpRecalculating = false,
     this.goToHelpVoiceEnabled = false,
     this.goToHelpSosConfirming = false,
     this.goToHelpCloseConfirming = false,
@@ -209,6 +214,20 @@ class HomeMapState {
   /// have arrived" with how long the trip took since Start. Null otherwise.
   final int? goToHelpArrivedTripMinutes;
 
+  /// Where the live position sits along [goToHelpRoute] — "to go" along
+  /// the road, and where the driven part of the line ends. Null until the
+  /// first fix, and while off route.
+  final RouteProgress? goToHelpProgress;
+
+  /// Live tracking has left the route (the web's 80 m, 3 fixes rule) — the
+  /// card turns pink and offers Recalculate.
+  final bool goToHelpOffRoute;
+
+  /// The off-route status line ("Still off the route — recalculating
+  /// automatically…", a failed recalculation, …).
+  final String? goToHelpOffRouteNotice;
+  final bool goToHelpRecalculating;
+
   /// Whether spoken turn-by-turn instructions are on — matches the web
   /// platform's "Voice directions" toggle.
   final bool goToHelpVoiceEnabled;
@@ -268,6 +287,10 @@ class HomeMapState {
     bool? goToHelpTracking,
     Object? goToHelpAccuracyMeters = _unset,
     Object? goToHelpArrivedTripMinutes = _unset,
+    Object? goToHelpProgress = _unset,
+    bool? goToHelpOffRoute,
+    Object? goToHelpOffRouteNotice = _unset,
+    bool? goToHelpRecalculating,
     bool? goToHelpVoiceEnabled,
     bool? goToHelpSosConfirming,
     bool? goToHelpCloseConfirming,
@@ -340,6 +363,15 @@ class HomeMapState {
       goToHelpArrivedTripMinutes: identical(goToHelpArrivedTripMinutes, _unset)
           ? this.goToHelpArrivedTripMinutes
           : goToHelpArrivedTripMinutes as int?,
+      goToHelpProgress: identical(goToHelpProgress, _unset)
+          ? this.goToHelpProgress
+          : goToHelpProgress as RouteProgress?,
+      goToHelpOffRoute: goToHelpOffRoute ?? this.goToHelpOffRoute,
+      goToHelpOffRouteNotice: identical(goToHelpOffRouteNotice, _unset)
+          ? this.goToHelpOffRouteNotice
+          : goToHelpOffRouteNotice as String?,
+      goToHelpRecalculating:
+          goToHelpRecalculating ?? this.goToHelpRecalculating,
       goToHelpVoiceEnabled: goToHelpVoiceEnabled ?? this.goToHelpVoiceEnabled,
       goToHelpSosConfirming:
           goToHelpSosConfirming ?? this.goToHelpSosConfirming,
@@ -363,15 +395,25 @@ class HomeMapState {
 /// either would defeat the point of separating them out.
 class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   StreamSubscription<TrackedPosition>? _trackingSubscription;
-  DateTime? _lastGoToHelpRouteFetch;
 
   /// When Start was tapped, for the arrival card's trip time.
   DateTime? _trackingStartedAt;
+
+  /// Off-route bookkeeping, as the web tracker: consecutive fixes off the
+  /// line, automatic recalculations made, and the two timers that announce
+  /// and then make one.
+  int _offRouteStrikes = 0;
+  int _autoRecalculations = 0;
+  Timer? _offRouteNoticeTimer;
+  Timer? _offRouteRecalcTimer;
   String? _lastSpokenInstruction;
 
   @override
   Future<HomeMapState> build() {
-    ref.onDispose(() => _trackingSubscription?.cancel());
+    ref.onDispose(() {
+      _trackingSubscription?.cancel();
+      _cancelOffRouteTimers();
+    });
     return _load();
   }
 
@@ -513,6 +555,9 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   void _cancelTracking() {
     _trackingSubscription?.cancel();
     _trackingSubscription = null;
+    _cancelOffRouteTimers();
+    _offRouteStrikes = 0;
+    _autoRecalculations = 0;
     _lastSpokenInstruction = null;
     unawaited(ref.read(voiceDirectionsServiceProvider).stop());
   }
@@ -541,6 +586,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
         goToHelpArrivedTripMinutes: null,
+        goToHelpProgress: null,
+        goToHelpOffRoute: false,
+        goToHelpOffRouteNotice: null,
+        goToHelpRecalculating: false,
         goToHelpSosConfirming: false,
       ),
     );
@@ -569,6 +618,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
         goToHelpArrivedTripMinutes: null,
+        goToHelpProgress: null,
+        goToHelpOffRoute: false,
+        goToHelpOffRouteNotice: null,
+        goToHelpRecalculating: false,
         goToHelpSosConfirming: false,
       ),
     );
@@ -603,6 +656,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
         goToHelpArrivedTripMinutes: null,
+        goToHelpProgress: null,
+        goToHelpOffRoute: false,
+        goToHelpOffRouteNotice: null,
+        goToHelpRecalculating: false,
         goToHelpSosConfirming: false,
       ),
     );
@@ -958,6 +1015,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       (s) => s.copyWith(
         goToHelpDestination: destination,
         goToHelpArrivedTripMinutes: null,
+        goToHelpProgress: null,
+        goToHelpOffRoute: false,
+        goToHelpOffRouteNotice: null,
+        goToHelpRecalculating: false,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
         goToHelpCloseConfirming: false,
@@ -1064,6 +1125,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       (s) => s.copyWith(
         goToHelpDestination: RoutePoint.fromFacility(facility),
         goToHelpArrivedTripMinutes: null,
+        goToHelpProgress: null,
+        goToHelpOffRoute: false,
+        goToHelpOffRouteNotice: null,
+        goToHelpRecalculating: false,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
         goToHelpCloseConfirming: false,
@@ -1123,6 +1188,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       (s) => s.copyWith(
         goToHelpDestination: destination,
         goToHelpArrivedTripMinutes: null,
+        goToHelpProgress: null,
+        goToHelpOffRoute: false,
+        goToHelpOffRouteNotice: null,
+        goToHelpRecalculating: false,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
         goToHelpCloseConfirming: false,
@@ -1174,6 +1243,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     _update(
       (s) => s.copyWith(
         goToHelpRoute: route ?? s.goToHelpRoute,
+        // Progress is along the old line; the next fix finds it again.
+        goToHelpProgress: route == null ? s.goToHelpProgress : null,
         goToHelpOrigin: origin,
         goToHelpLoading: false,
       ),
@@ -1198,6 +1269,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
         goToHelpArrivedTripMinutes: null,
+        goToHelpProgress: null,
+        goToHelpOffRoute: false,
+        goToHelpOffRouteNotice: null,
+        goToHelpRecalculating: false,
         goToHelpSosConfirming: false,
         goToHelpCloseConfirming: false,
         routeChipDismissed: false,
@@ -1214,7 +1289,6 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     if (current?.goToHelpDestination == null) return;
     _log(AnalyticsEvents.routeNavigationStarted);
     _cancelTracking();
-    _lastGoToHelpRouteFetch = null;
     _trackingStartedAt = DateTime.now();
     _update(
       (s) =>
@@ -1236,13 +1310,19 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   /// path) in place, unlike [closeGoToHelp].
   void stopGoToHelpTracking() {
     _cancelTracking();
-    _update((s) => s.copyWith(goToHelpTracking: false));
+    _update(
+      (s) => s.copyWith(
+        goToHelpTracking: false,
+        goToHelpProgress: null,
+        goToHelpOffRoute: false,
+        goToHelpOffRouteNotice: null,
+      ),
+    );
   }
 
-  /// Moves the route's origin to each live GPS fix and, at most once every
-  /// 10 seconds, re-fetches the route from there — re-fetching on every fix
-  /// (which can arrive every few meters of movement) would hammer the
-  /// Directions API far more than the ETA/geometry actually needs.
+  /// Follows each live GPS fix along the route, as the web tracker does:
+  /// progress and "to go" along the road, arrival, and off-route detection.
+  /// The route itself is only re-fetched to recalculate after leaving it.
   Future<void> _onTrackedPosition(TrackedPosition tracked) async {
     final destination = state.value?.goToHelpDestination;
     if (destination == null) {
@@ -1270,26 +1350,128 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       return;
     }
 
-    final now = DateTime.now();
-    final last = _lastGoToHelpRouteFetch;
-    if (last != null && now.difference(last) < const Duration(seconds: 10)) {
+    final route = state.value?.goToHelpRoute;
+    if (route == null || route.points.isEmpty) return;
+
+    // Off route: further than 80 m from the line (plus up to 100 m for a
+    // poor fix) on 3 fixes in a row.
+    final off =
+        distanceToLine(tracked.point, route.points) >
+        80 + min(tracked.accuracyMeters, 100);
+    if (off) {
+      _offRouteStrikes++;
+      if (_offRouteStrikes >= 3 && !(state.value?.goToHelpOffRoute ?? true)) {
+        _enterOffRoute();
+      }
       return;
     }
-    _lastGoToHelpRouteFetch = now;
+    _offRouteStrikes = 0;
+    if (state.value?.goToHelpOffRoute ?? false) _leaveOffRoute();
 
-    final route = await fetchRoute(
+    // Progress only moves forward along the line.
+    final previous = state.value?.goToHelpProgress;
+    final progress = progressAlong(
       tracked.point,
-      GeoPoint(
-        latitude: destination.latitude,
-        longitude: destination.longitude,
+      route.points,
+      fromIndex: previous?.segmentIndex ?? 0,
+    );
+    if (progress != null &&
+        (previous == null || progress.segmentIndex >= previous.segmentIndex)) {
+      _update((s) => s.copyWith(goToHelpProgress: progress));
+    }
+  }
+
+  void _enterOffRoute() {
+    _update(
+      (s) => s.copyWith(
+        goToHelpOffRoute: true,
+        goToHelpProgress: null,
+        goToHelpOffRouteNotice: _autoRecalculations >= 3
+            ? 'Still off the route. Tap Recalculate when you have signal.'
+            : null,
       ),
     );
-    if (route != null) {
-      _update((s) => s.copyWith(goToHelpRoute: route));
-      if (state.value?.goToHelpVoiceEnabled ?? false) {
-        _speakUpcomingInstruction(route);
-      }
+    _speak('You have left the route');
+    if (_autoRecalculations >= 3) return;
+    _offRouteNoticeTimer = Timer(const Duration(seconds: 12), () {
+      _update(
+        (s) => s.copyWith(
+          goToHelpOffRouteNotice:
+              'Still off the route — recalculating automatically…',
+        ),
+      );
+      _speak('You are still off the route. Recalculating shortly.');
+    });
+    _offRouteRecalcTimer = Timer(const Duration(seconds: 24), () {
+      _autoRecalculations++;
+      unawaited(recalculateGoToHelpRoute(automatic: true));
+    });
+  }
+
+  void _leaveOffRoute() {
+    _cancelOffRouteTimers();
+    _autoRecalculations = 0;
+    _update(
+      (s) => s.copyWith(goToHelpOffRoute: false, goToHelpOffRouteNotice: null),
+    );
+  }
+
+  void _cancelOffRouteTimers() {
+    _offRouteNoticeTimer?.cancel();
+    _offRouteNoticeTimer = null;
+    _offRouteRecalcTimer?.cancel();
+    _offRouteRecalcTimer = null;
+  }
+
+  /// The off-route card's "Recalculate route" — or the automatic one 24 s
+  /// after leaving the route. A new route from the live position.
+  Future<void> recalculateGoToHelpRoute({bool automatic = false}) async {
+    final current = state.value;
+    final origin = current?.goToHelpOrigin;
+    final destination = current?.goToHelpDestination;
+    if (origin == null ||
+        destination == null ||
+        current!.goToHelpRecalculating) {
+      return;
     }
+    _cancelOffRouteTimers();
+    if (automatic) _speak('Recalculating your route');
+    _update(
+      (s) => s.copyWith(
+        goToHelpRecalculating: true,
+        goToHelpOffRouteNotice: automatic ? 'Recalculating…' : null,
+      ),
+    );
+    final route = await fetchRoute(origin, destination.point);
+    if (route == null) {
+      _update(
+        (s) => s.copyWith(
+          goToHelpRecalculating: false,
+          goToHelpOffRouteNotice: 'Could not recalculate — no route returned.',
+        ),
+      );
+      return;
+    }
+    _offRouteStrikes = 0;
+    if (!automatic) _autoRecalculations = 0;
+    _update(
+      (s) => s.copyWith(
+        goToHelpRoute: route,
+        goToHelpRecalculating: false,
+        goToHelpOffRoute: false,
+        goToHelpOffRouteNotice: null,
+        goToHelpProgress: null,
+      ),
+    );
+    if (state.value?.goToHelpVoiceEnabled ?? false) {
+      _speakUpcomingInstruction(route, force: true);
+    }
+  }
+
+  /// Says [text] when voice directions are on.
+  void _speak(String text) {
+    if (!(state.value?.goToHelpVoiceEnabled ?? false)) return;
+    unawaited(ref.read(voiceDirectionsServiceProvider).speak(text));
   }
 
   /// Live tracking reached [destination]: stop following, show "You have
