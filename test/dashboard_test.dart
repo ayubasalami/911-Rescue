@@ -24,11 +24,15 @@ void main() {
     final dashboard = _parse('''
       {"profile":{"email":"a@b.com"},
        "history":[{"facility_name":"LASUTH","facility_category":"General Hospital",
-         "interaction_type":"navigated","created_at":"Thu, 15 Oct 2026 10:00:00 GMT"}],
+         "interaction_type":"navigated","created_at":"2026-10-15T09:27:55.822929+00:00"}],
        "top_facilities":[{"facility_name":"LASUTH","visits":3}],
        "saved":[{"facility_name":"LASUTH","facility_lat":6.59,"facility_lng":3.34}]}
     ''');
     expect(dashboard.history.single.interactionType, 'navigated');
+    expect(
+      dashboard.history.single.createdAt,
+      DateTime.utc(2026, 10, 15, 9, 27, 55, 822, 929),
+    );
     expect(dashboard.topFacilities.single.visits, 3);
     expect(dashboard.saved.single.latitude, 6.59);
     expect(dashboard.saved.single.synced, isTrue);

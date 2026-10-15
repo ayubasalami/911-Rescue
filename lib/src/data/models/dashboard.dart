@@ -104,13 +104,17 @@ class DashboardTopFacility {
   final String? facilityCategory;
 }
 
-/// The API sends HTTP dates (`Thu, 15 Oct 2026 09:05:39 GMT`), which
-/// [DateTime.parse] can't read; ISO strings are accepted too.
+/// The API mixes formats: the profile's `created_at` is an HTTP date
+/// (`Thu, 15 Oct 2026 09:05:39 GMT`), the activity and saved rows' are ISO
+/// (`2026-10-15T09:27:55.822929+00:00`). Never throws — an unreadable date
+/// is just left out.
 DateTime? parseServerDate(String? value) {
   if (value == null) return null;
+  final iso = DateTime.tryParse(value);
+  if (iso != null) return iso;
   try {
     return HttpDate.parse(value);
-  } on FormatException {
-    return DateTime.tryParse(value);
+  } catch (_) {
+    return null;
   }
 }
