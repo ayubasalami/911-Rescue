@@ -28,7 +28,8 @@ class AuthViewModel extends AsyncNotifier<AppUser?> {
         return null;
       case SignInCancelled():
         return null;
-      case SignInFailed(:final message):
+      case SignInFailed(:final message, :final reason):
+        _log(AnalyticsEvents.loginFailed, {'reason': reason});
         return message;
     }
   }

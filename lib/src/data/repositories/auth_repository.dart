@@ -34,8 +34,11 @@ class SignInCancelled extends SignInOutcome {
 }
 
 class SignInFailed extends SignInOutcome {
-  const SignInFailed(this.message);
+  const SignInFailed(this.message, {required this.reason});
   final String message;
+
+  /// A short code for analytics — see `AnalyticsEvents.loginFailed`.
+  final String reason;
 }
 
 /// Native Google sign-in, exchanged for the backend's `session` cookie —
@@ -58,7 +61,7 @@ class AuthRepository {
       case GoogleSignInCancelled():
         return const SignInCancelled();
       case GoogleSignInFailed(:final message):
-        return SignInFailed(message);
+        return SignInFailed(message, reason: 'google');
     }
 
     final AppFailure failure;
@@ -71,14 +74,21 @@ class AuthRepository {
     // Forget the Google account too, so the next attempt shows the picker
     // again rather than silently reusing the one that just failed.
     await _google.signOut().catchError((Object _) {});
-    return SignInFailed(switch (failure) {
+    return switch (failure) {
       // The backend couldn't reach Google to check the token — not the
       // user's fault, and not a credentials problem.
-      ServerFailure(statusCode: 503) =>
+      ServerFailure(statusCode: 503) => const SignInFailed(
         'Couldn\'t reach Google to confirm your sign-in. Please try again.',
-      UnauthorizedFailure() => 'Google sign-in was rejected. Please try again.',
-      _ => failure.userMessage,
-    });
+        reason: 'google_unreachable',
+      ),
+      UnauthorizedFailure() => const SignInFailed(
+        'Google sign-in was rejected. Please try again.',
+        reason: 'rejected',
+      ),
+      NetworkFailure() ||
+      TimeoutFailure() => SignInFailed(failure.userMessage, reason: 'network'),
+      _ => SignInFailed(failure.userMessage, reason: 'server'),
+    };
   }
 
   /// Ends the session everywhere it lives: the server, the cookie jar and

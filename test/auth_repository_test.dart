@@ -77,6 +77,7 @@ void main() {
       (outcome as SignInFailed).message,
       'Couldn\'t reach Google to confirm your sign-in. Please try again.',
     );
+    expect(outcome.reason, 'google_unreachable');
     expect(google.signedOut, isTrue);
   });
 
@@ -91,5 +92,6 @@ void main() {
       (outcome as SignInFailed).message,
       'Google sign-in was rejected. Please try again.',
     );
+    expect(outcome.reason, 'rejected');
   });
 }

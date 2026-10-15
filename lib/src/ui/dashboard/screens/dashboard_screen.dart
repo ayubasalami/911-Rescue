@@ -174,25 +174,29 @@ class _DashboardBody extends ConsumerWidget {
 
   final Dashboard dashboard;
 
-  void _close(
-    BuildContext context, {
-    required String name,
-    required bool navigate,
-    String? category,
-    double? latitude,
-    double? longitude,
-  }) => context.pop(
-    DashboardRequest(
-      facilityName: name,
-      navigate: navigate,
-      category: category,
-      latitude: latitude,
-      longitude: longitude,
-    ),
-  );
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    void close({
+      required String name,
+      required bool navigate,
+      String? category,
+      double? latitude,
+      double? longitude,
+    }) {
+      ref
+          .read(dashboardViewModelProvider.notifier)
+          .logAction(navigate ? 'navigate' : 'view');
+      context.pop(
+        DashboardRequest(
+          facilityName: name,
+          navigate: navigate,
+          category: category,
+          latitude: latitude,
+          longitude: longitude,
+        ),
+      );
+    }
+
     final profile = dashboard.profile;
     final history = dashboard.history;
     final visited = {for (final item in history) item.facilityName}.length;
@@ -259,8 +263,7 @@ class _DashboardBody extends ConsumerWidget {
               : [
                   for (final item in history)
                     _Row(
-                      onTap: () => _close(
-                        context,
+                      onTap: () => close(
                         name: item.facilityName,
                         navigate: false,
                         category: item.facilityCategory,
@@ -288,8 +291,7 @@ class _DashboardBody extends ConsumerWidget {
               : [
                   for (final (index, item) in dashboard.topFacilities.indexed)
                     _Row(
-                      onTap: () => _close(
-                        context,
+                      onTap: () => close(
                         name: item.facilityName,
                         navigate: false,
                         category: item.facilityCategory,
@@ -339,8 +341,7 @@ class _DashboardBody extends ConsumerWidget {
                       item: item,
                       onNavigate: item.latitude == null
                           ? null
-                          : () => _close(
-                              context,
+                          : () => close(
                               name: item.name,
                               navigate: true,
                               category: item.category,

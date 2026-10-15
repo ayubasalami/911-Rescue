@@ -64,6 +64,14 @@ abstract final class AnalyticsEvents {
   /// Firebase's standard sign-in event. Param: `method` (`google`).
   static const login = 'login';
   static const logout = 'logout';
+
+  /// Param: `reason` = `google` (Google's own sign-in failed) | `rejected`
+  /// (backend 401) | `google_unreachable` (backend 503) | `network` |
+  /// `server`.
+  static const loginFailed = 'login_failed';
+
+  /// Param: `action` = `view` (a row tap) | `navigate` | `remove`.
+  static const dashboardAction = 'dashboard_action';
   static const triageChatOpened = 'triage_chat_opened';
 
   /// A Triage routing button. Params: `category`, `emergency`.
