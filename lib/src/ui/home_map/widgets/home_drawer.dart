@@ -15,6 +15,7 @@ import '../../../data/services/place_search_service.dart';
 import '../../core/view_model/auth_view_model.dart';
 import '../../core/view_model/theme_mode_view_model.dart';
 import '../../core/widgets/app_button.dart';
+import '../../core/widgets/confirm_logout_dialog.dart';
 import '../../core/widgets/facility_category_glyph.dart';
 import '../view_model/home_map_view_model.dart';
 import 'data_sources_dialog.dart';
@@ -751,8 +752,11 @@ class _AccountSectionState extends ConsumerState<_AccountSection> {
           ? _Profile(
               user: user,
               onOpenDashboard: widget.onOpenDashboard,
-              onLogout: () =>
-                  ref.read(authViewModelProvider.notifier).signOut(),
+              onLogout: () async {
+                if (await confirmLogout(context)) {
+                  await ref.read(authViewModelProvider.notifier).signOut();
+                }
+              },
             )
           : SizedBox(
               width: double.infinity,

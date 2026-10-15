@@ -10,6 +10,7 @@ import '../../../data/models/saved_facility.dart';
 import '../../../data/services/facility_service.dart';
 import '../../core/view_model/auth_view_model.dart';
 import '../../core/view_model/theme_mode_view_model.dart';
+import '../../core/widgets/confirm_logout_dialog.dart';
 import '../view_model/dashboard_view_model.dart';
 
 /// What the dashboard asks the map to do as it closes — the web's
@@ -52,20 +53,43 @@ class DashboardScreen extends ConsumerWidget {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
         ),
-        title: Text.rich(
-          TextSpan(
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            children: [
-              TextSpan(
-                text: '911 ',
-                style: TextStyle(color: context.palette.primary),
+        title: Row(
+          spacing: 10,
+          children: [
+            // The web's header logo: the white-lettered one on dark, the
+            // dark-lettered one on light.
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Image.asset(
+                isDark
+                    ? 'assets/images/logo_black.png'
+                    : 'assets/images/logo_white.png',
+                height: 32,
               ),
-              TextSpan(
-                text: 'Rescue',
-                style: TextStyle(color: context.palette.accentGreen),
+            ),
+            Flexible(
+              child: Text.rich(
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                TextSpan(
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  children: [
+                    TextSpan(
+                      text: '911 ',
+                      style: TextStyle(color: context.palette.primary),
+                    ),
+                    TextSpan(
+                      text: 'Rescue',
+                      style: TextStyle(color: context.palette.accentGreen),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
         shape: Border(bottom: BorderSide(color: context.palette.border)),
         actions: [
@@ -83,6 +107,7 @@ class DashboardScreen extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () async {
+              if (!await confirmLogout(context)) return;
               await ref.read(authViewModelProvider.notifier).signOut();
               if (context.mounted) context.pop();
             },
