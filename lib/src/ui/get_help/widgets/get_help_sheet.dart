@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/analytics_events.dart';
+import '../../../core/app_failure.dart';
 import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/emergency_profile.dart';
@@ -150,6 +151,13 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
   AudioRecorder? _recorder;
   bool _isRecording = false;
   bool _voiceSent = false;
+  bool _voiceUploading = false;
+
+  /// What the backend heard, shown under "✓ Voice description sent".
+  String? _voiceTranscript;
+
+  /// The web's inline pink line under the voice button.
+  String? _voiceError;
   int _secondsLeft = _maxRecordingSeconds;
   Timer? _recordingTimer;
 
@@ -476,7 +484,13 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
 
   Future<void> _startRecording() async {
     final recorder = _recorder ??= AudioRecorder();
-    if (!await recorder.hasPermission()) return;
+    setState(() => _voiceError = null);
+    if (!await recorder.hasPermission()) {
+      if (mounted) {
+        setState(() => _voiceError = 'Microphone permission denied.');
+      }
+      return;
+    }
     final path =
         '${Directory.systemTemp.path}/ping_voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
     await recorder.start(const RecordConfig(), path: path);
@@ -511,6 +525,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     final publicId = _publicId;
     try {
       if (publicId == null) return;
+      setState(() => _voiceUploading = true);
       final bytes = await File(path).readAsBytes();
       final result = await ref
           .read(pingServiceProvider)
@@ -522,15 +537,24 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
           );
       if (!mounted) return;
       switch (result) {
-        case Ok():
+        case Ok(:final value):
           ref
               .read(analyticsServiceProvider)
               .logEvent(AnalyticsEvents.pingVoiceNoteSent);
-          setState(() => _voiceSent = true);
+          setState(() {
+            _voiceUploading = false;
+            _voiceSent = true;
+            _voiceTranscript = value.transcript;
+          });
         case Err(:final failure):
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(failure.userMessage)));
+          setState(() {
+            _voiceUploading = false;
+            _voiceError = switch (failure) {
+              NetworkFailure() ||
+              TimeoutFailure() => 'Network error sending recording',
+              _ => failure.userMessage,
+            };
+          });
       }
     } finally {
       try {
@@ -961,9 +985,26 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (_voiceTranscript case final transcript?
+              when transcript.trim().isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text(
+              '“${transcript.trim()}”',
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.4,
+                color: context.palette.textSecondary,
+              ),
+            ),
+          ],
           const SizedBox(height: 2),
+          // Back to the Add button, as on the web — not straight into a
+          // new recording.
           InkWell(
-            onTap: _toggleRecording,
+            onTap: () => setState(() {
+              _voiceSent = false;
+              _voiceTranscript = null;
+            }),
             child: Text(
               'Record again',
               style: TextStyle(
@@ -973,14 +1014,21 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
               ),
             ),
           ),
-        ] else ...[
+        ] else if (_voiceUploading)
+          Text(
+            'Sending recording…',
+            style: TextStyle(
+              fontSize: 12,
+              color: context.palette.textSecondary,
+            ),
+          )
+        else ...[
           SizedBox(
             width: double.infinity,
             child: AppButton(
               label: _isRecording
-                  ? 'Stop (${_secondsLeft}s)'
-                  : 'Add voice description',
-              icon: _isRecording ? Icons.stop : Icons.mic,
+                  ? '■ Stop (${_secondsLeft}s)'
+                  : '🎤 Add voice description',
               variant: _isRecording
                   ? AppButtonVariant.neutral
                   : AppButtonVariant.primary,
@@ -992,7 +1040,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
           const SizedBox(height: 6),
           Text(
             _isRecording
-                ? '• Recording — say where you are and what is wrong'
+                ? '● Recording — say where you are and what is wrong'
                 : 'Responders will hear this and read a transcript.',
             style: TextStyle(
               fontSize: 11,
@@ -1001,6 +1049,13 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
                   : context.palette.textSecondary,
               fontWeight: _isRecording ? FontWeight.w600 : FontWeight.normal,
             ),
+          ),
+        ],
+        if (_voiceError case final error?) ...[
+          const SizedBox(height: 4),
+          Text(
+            error,
+            style: TextStyle(fontSize: 11, color: context.palette.danger),
           ),
         ],
         const SizedBox(height: 12),
