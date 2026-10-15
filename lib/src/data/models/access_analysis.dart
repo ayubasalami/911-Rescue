@@ -154,10 +154,14 @@ class DirectionsStep {
   const DirectionsStep({
     required this.instruction,
     required this.distanceMeters,
+    this.location,
   });
 
   final String instruction;
   final double distanceMeters;
+
+  /// Where the manoeuvre happens — what voice prompts measure to.
+  final GeoPoint? location;
 }
 
 class DirectionsRoute {

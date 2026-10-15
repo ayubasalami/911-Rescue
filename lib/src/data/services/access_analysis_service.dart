@@ -199,9 +199,18 @@ class AccessAnalysisService {
   DirectionsStep _directionsStepFrom(JsonReader step) {
     final maneuver = step.object('maneuver');
     final instruction = maneuver.stringOrNull('instruction');
+    final location = maneuver.has('location')
+        ? maneuver.rawList('location')
+        : const <Object?>[];
     return DirectionsStep(
       instruction: instruction ?? _fallbackInstruction(maneuver, step),
       distanceMeters: step.double_('distance'),
+      location: location.length >= 2
+          ? GeoPoint(
+              longitude: (location[0]! as num).toDouble(),
+              latitude: (location[1]! as num).toDouble(),
+            )
+          : null,
     );
   }
 

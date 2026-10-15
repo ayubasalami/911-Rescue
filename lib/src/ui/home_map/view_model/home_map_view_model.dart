@@ -23,6 +23,7 @@ import '../../../data/services/interaction_service.dart';
 import '../../../data/services/ping_service.dart';
 import '../../../data/services/voice_directions_service.dart';
 import '../../../utils/route_progress.dart';
+import '../../../utils/turn_announcer.dart';
 import '../../../utils/triage_facility_picker.dart';
 import '../../core/view_model/auth_view_model.dart';
 
@@ -406,7 +407,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   int _autoRecalculations = 0;
   Timer? _offRouteNoticeTimer;
   Timer? _offRouteRecalcTimer;
-  String? _lastSpokenInstruction;
+
+  /// Route steps already announced, so each turn is said once (the web's
+  /// spoken set) — cleared whenever the route changes.
+  final Set<int> _spokenSteps = {};
 
   @override
   Future<HomeMapState> build() {
@@ -558,7 +562,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     _cancelOffRouteTimers();
     _offRouteStrikes = 0;
     _autoRecalculations = 0;
-    _lastSpokenInstruction = null;
+    _spokenSteps.clear();
     unawaited(ref.read(voiceDirectionsServiceProvider).stop());
   }
 
@@ -1243,12 +1247,14 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     _update(
       (s) => s.copyWith(
         goToHelpRoute: route ?? s.goToHelpRoute,
-        // Progress is along the old line; the next fix finds it again.
+        // Progress (and which turns were said) is along the old line; the
+        // next fix finds it again.
         goToHelpProgress: route == null ? s.goToHelpProgress : null,
         goToHelpOrigin: origin,
         goToHelpLoading: false,
       ),
     );
+    if (route != null) _spokenSteps.clear();
   }
 
   void toggleGoToHelpCard() =>
@@ -1298,11 +1304,6 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         .read(locationRepositoryProvider)
         .positionStream()
         .listen(_onTrackedPosition);
-
-    final route = current?.goToHelpRoute;
-    if (route != null && (current?.goToHelpVoiceEnabled ?? false)) {
-      _speakUpcomingInstruction(route, force: true);
-    }
   }
 
   /// Stops live tracking and reverts to the static route preview — the web
@@ -1352,6 +1353,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
 
     final route = state.value?.goToHelpRoute;
     if (route == null || route.points.isEmpty) return;
+
+    _announceNextTurn(tracked.point);
 
     // Off route: further than 80 m from the line (plus up to 100 m for a
     // poor fix) on 3 fixes in a row.
@@ -1463,9 +1466,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpProgress: null,
       ),
     );
-    if (state.value?.goToHelpVoiceEnabled ?? false) {
-      _speakUpcomingInstruction(route, force: true);
-    }
+    _spokenSteps.clear();
+    _announceNextTurn(origin);
   }
 
   /// Says [text] when voice directions are on.
@@ -1507,35 +1509,35 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   }
 
   /// Turns spoken turn-by-turn instructions on/off — the web platform's
-  /// "Voice directions" toggle. Enabling it mid-route immediately announces
-  /// the current next instruction, the same feedback a driver gets from
-  /// turning voice on partway through a real navigation app.
+  /// "Voice directions" toggle. Turning it on mid-route checks for a turn
+  /// to announce straight away, as the web does.
   void toggleGoToHelpVoice() {
     final enabling = !(state.value?.goToHelpVoiceEnabled ?? false);
     _log(AnalyticsEvents.voiceGuidanceToggled, {'enabled': '$enabling'});
     _update((s) => s.copyWith(goToHelpVoiceEnabled: enabling));
     if (!enabling) {
-      _lastSpokenInstruction = null;
       unawaited(ref.read(voiceDirectionsServiceProvider).stop());
       return;
     }
-    final route = state.value?.goToHelpRoute;
-    if (route != null) _speakUpcomingInstruction(route, force: true);
+    final origin = state.value?.goToHelpOrigin;
+    if ((state.value?.goToHelpTracking ?? false) && origin != null) {
+      _announceNextTurn(origin);
+    }
   }
 
-  /// Speaks [route]'s next instruction — but only when it's actually new,
-  /// since [_onTrackedPosition] calls this on every route refetch (every
-  /// ~10s while tracking) and re-announcing an unchanged instruction on
-  /// every refetch would be constant, useless chatter. [force] bypasses
-  /// that for the "just turned voice on" case, where re-stating the current
-  /// instruction is the whole point even if it hasn't changed.
-  void _speakUpcomingInstruction(DirectionsRoute route, {bool force = false}) {
-    if (route.steps.isEmpty) return;
-    final instruction = route.steps.first.instruction;
-    if (instruction.isEmpty) return;
-    if (!force && instruction == _lastSpokenInstruction) return;
-    _lastSpokenInstruction = instruction;
-    unawaited(ref.read(voiceDirectionsServiceProvider).speak(instruction));
+  /// Says the next turn once it's within 160 m of [position] — "In 150
+  /// metres, turn left onto …", or just the instruction when close. Each
+  /// turn is announced once; see [nextTurnAnnouncement].
+  void _announceNextTurn(GeoPoint position) {
+    final current = state.value;
+    final route = current?.goToHelpRoute;
+    if (route == null || !(current?.goToHelpVoiceEnabled ?? false)) return;
+    final text = nextTurnAnnouncement(
+      steps: route.steps,
+      position: position,
+      spoken: _spokenSteps,
+    );
+    if (text != null) _speak(text);
   }
 }
 
