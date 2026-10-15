@@ -7,32 +7,25 @@ final themeRepositoryProvider = Provider<ThemeRepository>(
 );
 
 /// The user's light/dark choice, on this device only, under the web's
-/// `theme` key (`dark` / `light`). Nothing saved means follow the system.
+/// `theme` key (`dark` / `light`). Like the web, nothing saved means light —
+/// the system setting is ignored.
 class ThemeRepository {
   static const _key = 'theme';
 
-  /// Never throws — unreadable storage just means following the system.
+  /// Never throws — unreadable storage just means light.
   Future<ThemeMode> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return switch (prefs.getString(_key)) {
-        'dark' => ThemeMode.dark,
-        'light' => ThemeMode.light,
-        _ => ThemeMode.system,
-      };
+      return prefs.getString(_key) == 'dark' ? ThemeMode.dark : ThemeMode.light;
     } catch (_) {
-      return ThemeMode.system;
+      return ThemeMode.light;
     }
   }
 
   Future<void> save(ThemeMode mode) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (mode == ThemeMode.system) {
-        await prefs.remove(_key);
-      } else {
-        await prefs.setString(_key, mode == ThemeMode.dark ? 'dark' : 'light');
-      }
+      await prefs.setString(_key, mode == ThemeMode.dark ? 'dark' : 'light');
     } catch (_) {
       // Worst case the choice is forgotten on the next launch.
     }

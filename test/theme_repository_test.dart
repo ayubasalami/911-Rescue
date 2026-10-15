@@ -6,9 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   final repository = ThemeRepository();
 
-  test('follows the system when nothing is saved', () async {
+  test('is light when nothing is saved, like the web', () async {
     SharedPreferences.setMockInitialValues({});
-    expect(await repository.load(), ThemeMode.system);
+    expect(await repository.load(), ThemeMode.light);
   });
 
   test('reads the web-style values', () async {
@@ -18,11 +18,11 @@ void main() {
     expect(await repository.load(), ThemeMode.light);
   });
 
-  test('saves a choice, and system clears it', () async {
+  test('saves a choice', () async {
     SharedPreferences.setMockInitialValues({});
     await repository.save(ThemeMode.dark);
     expect(await repository.load(), ThemeMode.dark);
-    await repository.save(ThemeMode.system);
-    expect(await repository.load(), ThemeMode.system);
+    await repository.save(ThemeMode.light);
+    expect(await repository.load(), ThemeMode.light);
   });
 }

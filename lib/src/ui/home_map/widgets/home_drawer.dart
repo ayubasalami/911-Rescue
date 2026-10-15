@@ -103,9 +103,8 @@ class HomeDrawer extends ConsumerWidget {
           padding: EdgeInsets.zero,
           children: [
             _Header(
-              onToggleTheme: () => ref
-                  .read(themeModeProvider.notifier)
-                  .toggle(Theme.of(context).brightness),
+              onToggleTheme: () =>
+                  ref.read(themeModeProvider.notifier).toggle(),
               onClose: () => Scaffold.of(context).closeDrawer(),
             ),
             const Divider(height: 1),
