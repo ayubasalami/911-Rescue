@@ -18,9 +18,11 @@ import '../../../data/repositories/facility_repository.dart';
 import '../../../data/repositories/location_repository.dart';
 import '../../../data/services/access_analysis_service.dart';
 import '../../../data/services/analytics_service.dart';
+import '../../../data/services/interaction_service.dart';
 import '../../../data/services/ping_service.dart';
 import '../../../data/services/voice_directions_service.dart';
 import '../../../utils/triage_facility_picker.dart';
+import '../../core/view_model/auth_view_model.dart';
 
 const defaultMapCenter = GeoPoint(latitude: 6.5244, longitude: 3.3792);
 
@@ -456,6 +458,14 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
 
   void _log(String name, [Map<String, Object>? parameters]) =>
       ref.read(analyticsServiceProvider).logEvent(name, parameters: parameters);
+
+  /// Adds to the signed-in account's dashboard activity, as the web does.
+  /// Signed out there's no account to log against, and a failure isn't
+  /// worth surfacing.
+  void logInteraction(Facility facility, FacilityInteraction type) {
+    if (ref.read(authViewModelProvider).value == null) return;
+    unawaited(ref.read(interactionServiceProvider).log(facility, type));
+  }
 
   void _logRouteStarted(String source, {FacilityCategory? category}) =>
       _log(AnalyticsEvents.routeStarted, {
@@ -927,6 +937,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
 
     final destination = RoutePoint.fromFacility(nearest);
     _logRouteStarted('get_help', category: category);
+    logInteraction(nearest, FacilityInteraction.navigated);
     _update(
       (s) => s.copyWith(
         goToHelpDestination: destination,
@@ -1031,6 +1042,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     }
 
     _logRouteStarted(analyticsSource, category: facility.category);
+    logInteraction(facility, FacilityInteraction.navigated);
     _update(
       (s) => s.copyWith(
         goToHelpDestination: RoutePoint.fromFacility(facility),
@@ -1080,6 +1092,15 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     }
 
     _logRouteStarted('route_planner');
+    // Only a facility destination — a dropped pin or searched place isn't
+    // dashboard activity.
+    final facilities = state.value?.facilities ?? const <Facility>[];
+    for (final facility in facilities) {
+      if (facility.name == destination.name) {
+        logInteraction(facility, FacilityInteraction.navigated);
+        break;
+      }
+    }
     _update(
       (s) => s.copyWith(
         goToHelpDestination: destination,

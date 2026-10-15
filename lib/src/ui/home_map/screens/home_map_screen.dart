@@ -16,6 +16,7 @@ import '../../../data/models/geo_point.dart';
 import '../../../data/models/route_point.dart';
 import '../../../data/models/triage.dart';
 import '../../../data/services/analytics_service.dart';
+import '../../../data/services/interaction_service.dart';
 import '../../core/view_model/auth_view_model.dart';
 import '../../core/view_model/saved_facilities_view_model.dart';
 import '../../get_help/widgets/get_help_sheet.dart';
@@ -1290,12 +1291,19 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                         facility: state!.selectedFacility!,
                         onViewInfo: () =>
                             _viewFacilityInfo(state.selectedFacility!),
-                        onAnalyzeAccess: () => _runAnalysis(
-                          GeoPoint(
-                            latitude: state.selectedFacility!.latitude,
-                            longitude: state.selectedFacility!.longitude,
-                          ),
-                        ),
+                        onAnalyzeAccess: () {
+                          final facility = state.selectedFacility!;
+                          _viewModel.logInteraction(
+                            facility,
+                            FacilityInteraction.analyzed,
+                          );
+                          _runAnalysis(
+                            GeoPoint(
+                              latitude: facility.latitude,
+                              longitude: facility.longitude,
+                            ),
+                          );
+                        },
                         onGetDirections: () =>
                             _openPlannerTo(state.selectedFacility!),
                         saved: savedFacilities.any(
