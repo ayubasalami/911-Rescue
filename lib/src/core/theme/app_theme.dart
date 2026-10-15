@@ -48,8 +48,8 @@ class AppPalette extends ThemeExtension<AppPalette> {
   /// `--border-color`.
   final Color border;
 
-  /// The drawer's "Lagos Boundary" map layer outline — a distinct teal so
-  /// it doesn't read as a route (primary blue) or traffic (success green).
+  /// The drawer's "Lagos Boundary" map layer outline — the web's dashed
+  /// `#00e5ff`, in both themes.
   final Color boundary;
 
   /// `--input-bg`.
@@ -83,7 +83,7 @@ class AppPalette extends ThemeExtension<AppPalette> {
     textPrimary: Color(0xFF121212),
     textSecondary: Color(0xFF666666),
     border: Color(0xFFE2E5E9),
-    boundary: Color(0xFF06B6D4),
+    boundary: Color(0xFF00E5FF),
     inputBg: Color(0xFFF0F2F5),
     hoverBg: Color(0xFFE4E6E9),
     accentGreen: Color(0xFF00AA55),
@@ -103,7 +103,7 @@ class AppPalette extends ThemeExtension<AppPalette> {
     textPrimary: Color(0xFFF5F5F5),
     textSecondary: Color(0xFFAAAAAA),
     border: Color(0xFF333333),
-    boundary: Color(0xFF06B6D4),
+    boundary: Color(0xFF00E5FF),
     inputBg: Color(0xFF2A2A2A),
     hoverBg: Color(0xFF333333),
     accentGreen: Color(0xFF00FF88),

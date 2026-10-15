@@ -358,8 +358,12 @@ class MapAnnotationController {
     await analysisRouteManager.setLineDasharray([1.25, 1.25]);
     _analysisRouteManager = analysisRouteManager;
 
-    _boundaryManager = await mapboxMap.annotations
+    final boundaryManager = await mapboxMap.annotations
         .createPolylineAnnotationManager();
+    // The web's `dashArray: 5,10` at weight 3 — Mapbox measures dashes in
+    // line widths.
+    await boundaryManager.setLineDasharray([5 / 3, 10 / 3]);
+    _boundaryManager = boundaryManager;
 
     final headingManager = await mapboxMap.annotations
         .createPointAnnotationManager();
@@ -945,9 +949,8 @@ class MapAnnotationController {
   /// Renders (or clears, when [ring] is null) the Lagos state boundary as
   /// an outline — a plain [PolylineAnnotationOptions] rather than a filled
   /// [PolygonAnnotationOptions], since a fill would obscure everything
-  /// inside it. Mapbox's simple annotation API has no dash-array support
-  /// (only `fill-outline-color` does, and that's a fixed 1px line with no
-  /// styling control), so this is a solid line rather than dashed.
+  /// inside it. Dashed cyan at width 3, as on the web (the dash pattern is
+  /// set on [_boundaryManager]).
   Future<void> syncBoundary(List<GeoPoint>? ring) async {
     final manager = _boundaryManager;
     if (manager == null) return;
@@ -971,7 +974,7 @@ class MapAnnotationController {
           ],
         ),
         lineColor: _palette.boundary.toARGB32(),
-        lineWidth: 2,
+        lineWidth: 3,
       ),
     );
   }

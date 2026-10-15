@@ -32,6 +32,7 @@ class GoToHelpCard extends StatelessWidget {
     this.recalculating = false,
     this.remainingMeters,
     this.onRecalculate,
+    this.onViewSteps,
     this.voiceEnabled = false,
     this.sosConfirming = false,
     this.closeConfirming = false,
@@ -74,6 +75,10 @@ class GoToHelpCard extends StatelessWidget {
   final String? offRouteNotice;
   final bool recalculating;
   final VoidCallback? onRecalculate;
+
+  /// While following, the steps sit behind the web's "☰ View turn-by-turn
+  /// steps" link instead of filling the card.
+  final VoidCallback? onViewSteps;
 
   /// Distance left along the road while tracking; the whole route's
   /// distance until the first fix.
@@ -416,9 +421,24 @@ class GoToHelpCard extends StatelessWidget {
             fontSize: 13,
           ),
         ],
-        const SizedBox(height: 8),
-        const Divider(height: 1),
-        _buildStepList(context),
+        if (route.steps.isNotEmpty && onViewSteps != null && !sosConfirming)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: InkWell(
+              onTap: onViewSteps,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  '☰ View turn-by-turn steps',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: context.palette.primary,
+                  ),
+                ),
+              ),
+            ),
+          ),
         const SizedBox(height: 12),
         _buildActions(
           context,

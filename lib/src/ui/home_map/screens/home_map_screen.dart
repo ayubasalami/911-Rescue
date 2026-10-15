@@ -1511,6 +1511,13 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     recalculating: state.goToHelpRecalculating,
                     remainingMeters: state.goToHelpProgress?.remainingMeters,
                     onRecalculate: _viewModel.recalculateGoToHelpRoute,
+                    onViewSteps: () => showModalBottomSheet<void>(
+                      context: context,
+                      isScrollControlled: true,
+                      barrierColor: Colors.black26,
+                      builder: (_) =>
+                          TurnByTurnSheet(steps: state.goToHelpRoute!.steps),
+                    ),
                     sosConfirming: state.goToHelpSosConfirming,
                     closeConfirming: state.goToHelpCloseConfirming,
                     onRequestClose: _viewModel.requestCloseGoToHelp,
