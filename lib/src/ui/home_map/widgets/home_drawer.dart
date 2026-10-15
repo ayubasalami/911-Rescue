@@ -747,7 +747,8 @@ class _AccountSectionState extends ConsumerState<_AccountSection> {
     final auth = ref.watch(authViewModelProvider);
     final user = auth.value;
     return Padding(
-      padding: const EdgeInsets.all(16),
+      // The web's `.sb-section`.
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: user != null
           ? _Profile(
               user: user,
@@ -817,15 +818,23 @@ class _Profile extends StatelessWidget {
       children: [
         Row(
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: context.palette.inputBg,
-              foregroundImage: picture == null ? null : NetworkImage(picture),
-              child: Text(
-                initial,
-                style: TextStyle(
-                  color: context.palette.primary,
-                  fontWeight: FontWeight.w700,
+            // The web's `.user-avatar`: 32px, with a 1px accent ring.
+            DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: context.palette.primary),
+              ),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: context.palette.inputBg,
+                foregroundImage: picture == null ? null : NetworkImage(picture),
+                child: Text(
+                  initial,
+                  style: TextStyle(
+                    color: context.palette.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
                 ),
               ),
             ),
@@ -841,7 +850,7 @@ class _Profile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
-                        fontSize: 14,
+                        fontSize: 13,
                       ),
                     ),
                   Text(
@@ -850,7 +859,7 @@ class _Profile extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: context.palette.textSecondary,
-                      fontSize: 12,
+                      fontSize: 11,
                     ),
                   ),
                 ],
@@ -860,31 +869,45 @@ class _Profile extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            OutlinedButton(
-              onPressed: onOpenDashboard,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: context.palette.primary,
-                side: BorderSide(color: context.palette.primary),
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-              ),
-              child: const Text(
-                '📊 My Dashboard',
-                style: TextStyle(fontWeight: FontWeight.w600),
+            // The web's `.btn-dashboard`: fills the row, blue-tinted with
+            // an accent border, 12px bold.
+            Expanded(
+              child: OutlinedButton(
+                onPressed: onOpenDashboard,
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: const Color(0x1A0077FF),
+                  foregroundColor: context.palette.primary,
+                  side: BorderSide(color: context.palette.primary),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                child: const Text('📊 My Dashboard'),
               ),
             ),
+            const SizedBox(width: 10),
+            // `.btn-logout`: plain pink text, 11px bold.
             TextButton(
               onPressed: onLogout,
               style: TextButton.styleFrom(
                 foregroundColor: context.palette.danger,
-                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.all(5),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-              child: const Text(
-                'Logout',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
+              child: const Text('Logout'),
             ),
           ],
         ),
