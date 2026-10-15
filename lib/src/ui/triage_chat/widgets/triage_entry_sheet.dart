@@ -6,7 +6,11 @@ import '../../../core/theme/app_theme.dart';
 /// directly for a life-threatening emergency, or describing the incident
 /// to get matched with the nearest responder.
 class TriageEntrySheet extends StatelessWidget {
-  const TriageEntrySheet({super.key, required this.onCall112, required this.onReportIncident});
+  const TriageEntrySheet({
+    super.key,
+    required this.onCall112,
+    required this.onReportIncident,
+  });
 
   final VoidCallback onCall112;
   final VoidCallback onReportIncident;
@@ -21,30 +25,41 @@ class TriageEntrySheet extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.circle, color: AppColors.success, size: 10),
+              Icon(Icons.circle, color: context.palette.success, size: 10),
               const SizedBox(width: 8),
               const Expanded(
-                child: Text('911 Rescue Triage', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                child: Text(
+                  '911 Rescue Triage',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
               ),
-              InkWell(onTap: () => Navigator.of(context).pop(), child: const Icon(Icons.close)),
+              InkWell(
+                onTap: () => Navigator.of(context).pop(),
+                child: const Icon(Icons.close),
+              ),
             ],
           ),
           const Divider(height: 24),
-          const Text('How can we help you right now?', style: TextStyle(color: AppColors.textSecondary)),
+          Text(
+            'How can we help you right now?',
+            style: TextStyle(color: context.palette.textSecondary),
+          ),
           const SizedBox(height: 16),
           _EntryOption(
             emoji: '🚨',
             title: 'Call 112 Now',
-            description: "Life-threatening emergency — unconsciousness, severe bleeding, can't breathe.",
-            color: AppColors.danger,
+            description:
+                "Life-threatening emergency — unconsciousness, severe bleeding, can't breathe.",
+            color: context.palette.danger,
             onTap: onCall112,
           ),
           const SizedBox(height: 12),
           _EntryOption(
             emoji: '💬',
             title: 'Report Incident',
-            description: "Describe your symptoms and we'll find the closest matching specialist.",
-            color: AppColors.primary,
+            description:
+                "Describe your symptoms and we'll find the closest matching specialist.",
+            color: context.palette.primary,
             onTap: onReportIncident,
           ),
         ],
@@ -71,7 +86,7 @@ class _EntryOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.backgroundSurface,
+      color: context.palette.backgroundSurface,
       borderRadius: BorderRadius.circular(AppRadii.md),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.md),
@@ -91,9 +106,22 @@ class _EntryOption extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    Text(description, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        color: context.palette.textSecondary,
+                        fontSize: 13,
+                      ),
+                    ),
                   ],
                 ),
               ),

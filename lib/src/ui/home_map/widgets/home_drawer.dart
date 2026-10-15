@@ -20,8 +20,8 @@ import 'how_to_use_dialog.dart';
 import 'map_legend.dart' show FacilityCategoryLegend;
 import 'transport_mode_button.dart';
 
-const _sectionHeaderStyle = TextStyle(
-  color: AppColors.textSecondary,
+TextStyle _sectionHeaderStyle(BuildContext context) => TextStyle(
+  color: context.palette.textSecondary,
   fontWeight: FontWeight.bold,
   fontSize: 12,
   letterSpacing: 0.5,
@@ -119,8 +119,8 @@ class HomeDrawer extends ConsumerWidget {
                 child: OutlinedButton(
                   onPressed: () => _signInWithGoogle(context, ref),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: const BorderSide(color: AppColors.border),
+                    foregroundColor: context.palette.textPrimary,
+                    side: BorderSide(color: context.palette.border),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -210,24 +210,24 @@ class _Header extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 RichText(
-                  text: const TextSpan(
+                  text: TextSpan(
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                     children: [
                       TextSpan(
                         text: '911 ',
-                        style: TextStyle(color: AppColors.primary),
+                        style: TextStyle(color: context.palette.primary),
                       ),
                       TextSpan(
                         text: 'Rescue',
-                        style: TextStyle(color: AppColors.success),
+                        style: TextStyle(color: context.palette.success),
                       ),
                     ],
                   ),
                 ),
-                const Text(
+                Text(
                   'Emergency Finder',
                   style: TextStyle(
-                    color: AppColors.textSecondary,
+                    color: context.palette.textSecondary,
                     fontSize: 11,
                   ),
                 ),
@@ -239,9 +239,9 @@ class _Header extends StatelessWidget {
             onPressed: onDarkMode,
             tooltip: 'Toggle dark mode',
             style: IconButton.styleFrom(
-              side: const BorderSide(color: AppColors.primary),
+              side: BorderSide(color: context.palette.primary),
               shape: const CircleBorder(),
-              foregroundColor: AppColors.primary,
+              foregroundColor: context.palette.primary,
             ),
           ),
           IconButton(
@@ -358,7 +358,7 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('SEARCH FACILITY', style: _sectionHeaderStyle),
+          Text('SEARCH FACILITY', style: _sectionHeaderStyle(context)),
           const SizedBox(height: 8),
           TextField(
             controller: _controller,
@@ -368,14 +368,14 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
             decoration: InputDecoration(
               hintText: 'Facilities name or address',
               filled: true,
-              fillColor: AppColors.backgroundCanvas,
+              fillColor: context.palette.backgroundCanvas,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12,
                 vertical: 10,
               ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadii.sm),
-                borderSide: const BorderSide(color: AppColors.border),
+                borderSide: BorderSide(color: context.palette.border),
               ),
               suffixIcon: _loading
                   ? const Padding(
@@ -391,19 +391,19 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
           ),
           if (_searchFailed) ...[
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Could not search right now. Try again.',
-              style: TextStyle(color: AppColors.danger, fontSize: 12),
+              style: TextStyle(color: context.palette.danger, fontSize: 12),
             ),
           ],
           if (_results != null)
             if (_results!.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(top: 8),
                 child: Text(
                   'No results found.',
                   style: TextStyle(
-                    color: AppColors.textSecondary,
+                    color: context.palette.textSecondary,
                     fontSize: 13,
                   ),
                 ),
@@ -429,10 +429,10 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
                               // The web marks places with 📍 instead of a
                               // facility icon.
                               if (facility.isPlace)
-                                const Icon(
+                                Icon(
                                   Icons.location_on_outlined,
                                   size: 18,
-                                  color: AppColors.textSecondary,
+                                  color: context.palette.textSecondary,
                                 )
                               else
                                 FacilityCategoryGlyph(
@@ -456,8 +456,8 @@ class _SearchSectionState extends ConsumerState<_SearchSection> {
                                     ),
                                     Text(
                                       facility.categoryLabel,
-                                      style: const TextStyle(
-                                        color: AppColors.textSecondary,
+                                      style: TextStyle(
+                                        color: context.palette.textSecondary,
                                         fontSize: 11,
                                       ),
                                     ),
@@ -516,18 +516,21 @@ class _MapLayersSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('MAP LAYERS', style: _sectionHeaderStyle),
+          Text('MAP LAYERS', style: _sectionHeaderStyle(context)),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Filter by Type:',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style: TextStyle(
+              color: context.palette.textSecondary,
+              fontSize: 12,
+            ),
           ),
           const SizedBox(height: 4),
           DropdownButtonFormField<FacilityCategory?>(
             initialValue: selectedFilter,
             decoration: InputDecoration(
               filled: true,
-              fillColor: AppColors.backgroundCanvas,
+              fillColor: context.palette.backgroundCanvas,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12,
                 vertical: 4,
@@ -588,7 +591,7 @@ class _LayerRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: AppColors.backgroundCanvas,
+        color: context.palette.backgroundCanvas,
         borderRadius: BorderRadius.circular(AppRadii.sm),
         clipBehavior: Clip.antiAlias,
         child: CheckboxListTile(
@@ -626,18 +629,21 @@ class _AnalyzerDefaultsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('ACCESSIBILITY ANALYZER', style: _sectionHeaderStyle),
+          Text('ACCESSIBILITY ANALYZER', style: _sectionHeaderStyle(context)),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Commute Mode:',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style: TextStyle(
+              color: context.palette.textSecondary,
+              fontSize: 12,
+            ),
           ),
           const SizedBox(height: 4),
           DropdownButtonFormField<TransportMode>(
             initialValue: selectedMode,
             decoration: InputDecoration(
               filled: true,
-              fillColor: AppColors.backgroundCanvas,
+              fillColor: context.palette.backgroundCanvas,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12,
                 vertical: 4,
@@ -659,16 +665,19 @@ class _AnalyzerDefaultsSection extends StatelessWidget {
             },
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'Max Time Threshold:',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style: TextStyle(
+              color: context.palette.textSecondary,
+              fontSize: 12,
+            ),
           ),
           const SizedBox(height: 4),
           DropdownButtonFormField<int>(
             initialValue: thresholdMinutes,
             decoration: InputDecoration(
               filled: true,
-              fillColor: AppColors.backgroundCanvas,
+              fillColor: context.palette.backgroundCanvas,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 12,
                 vertical: 4,
@@ -761,10 +770,10 @@ class _Footer extends StatelessWidget {
                 child: GestureDetector(
                   onTap: () =>
                       _openLink(context, 'https://bwanalytics.com.ng/'),
-                  child: const Text(
+                  child: Text(
                     'Made by BW Analytics',
                     style: TextStyle(
-                      color: AppColors.primary,
+                      color: context.palette.primary,
                       fontWeight: FontWeight.w600,
                       decoration: TextDecoration.underline,
                     ),
@@ -780,7 +789,7 @@ class _Footer extends StatelessWidget {
                   'assets/images/linkedin_icon.png',
                   width: 22,
                   height: 22,
-                  color: AppColors.textSecondary,
+                  color: context.palette.textSecondary,
                   colorBlendMode: BlendMode.srcIn,
                 ),
               ),
@@ -791,7 +800,7 @@ class _Footer extends StatelessWidget {
                   'assets/images/whatsapp_icon.png',
                   width: 22,
                   height: 22,
-                  color: AppColors.textSecondary,
+                  color: context.palette.textSecondary,
                   colorBlendMode: BlendMode.srcIn,
                 ),
               ),
@@ -800,16 +809,22 @@ class _Footer extends StatelessWidget {
           const SizedBox(height: 4),
           GestureDetector(
             onTap: () => _openLink(context, 'mailto:ogdi@bwanalytics.com'),
-            child: const Text(
+            child: Text(
               'ogdi@bwanalytics.com',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: TextStyle(
+                color: context.palette.textSecondary,
+                fontSize: 12,
+              ),
             ),
           ),
           GestureDetector(
             onTap: () => _openLink(context, 'tel:+2348154225124'),
-            child: const Text(
+            child: Text(
               '+234 815 422 5124',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              style: TextStyle(
+                color: context.palette.textSecondary,
+                fontSize: 12,
+              ),
             ),
           ),
         ],

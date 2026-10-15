@@ -567,7 +567,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     if (_checkingStoredPing) return const SizedBox.shrink();
     final isPinging = _pingCategory != null;
     return Material(
-      color: AppColors.backgroundSurface,
+      color: context.palette.backgroundSurface,
       borderRadius: BorderRadius.circular(AppRadii.md),
       elevation: 8,
       shadowColor: Colors.black26,
@@ -575,7 +575,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
         decoration: isPinging
             ? BoxDecoration(
                 borderRadius: BorderRadius.circular(AppRadii.md),
-                border: Border.all(color: AppColors.danger, width: 1.5),
+                border: Border.all(color: context.palette.danger, width: 1.5),
               )
             : null,
         child: Padding(
@@ -604,21 +604,21 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
             InkWell(
               onTap: widget.onDismiss ?? () => Navigator.of(context).maybePop(),
               borderRadius: BorderRadius.circular(AppRadii.full),
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.all(4),
                 child: Icon(
                   Icons.close,
                   size: 18,
-                  color: AppColors.textSecondary,
+                  color: context.palette.textSecondary,
                 ),
               ),
             ),
           ],
         ),
         const SizedBox(height: 2),
-        const Text(
+        Text(
           'Choose one option',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          style: TextStyle(color: context.palette.textSecondary, fontSize: 13),
         ),
         const SizedBox(height: 12),
         Row(
@@ -628,7 +628,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
               child: _OptionChip(
                 icon: Icons.sensors,
                 label: 'Ping for Help',
-                color: AppColors.danger,
+                color: context.palette.danger,
                 selected: _mode == _HelpMode.ping,
                 onTap: () => setState(() => _mode = _HelpMode.ping),
               ),
@@ -637,7 +637,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
               child: _OptionChip(
                 icon: Icons.directions_car,
                 label: 'Go to Help',
-                color: AppColors.primary,
+                color: context.palette.primary,
                 selected: _mode == _HelpMode.goToHelp,
                 onTap: () => setState(() => _mode = _HelpMode.goToHelp),
               ),
@@ -652,7 +652,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
                 : 'Then choose help type',
             style: TextStyle(
               fontSize: 12,
-              color: _mode == null ? AppColors.textSecondary : AppColors.danger,
+              color: _mode == null
+                  ? context.palette.textSecondary
+                  : context.palette.danger,
               fontWeight: FontWeight.w600,
             ),
             textAlign: TextAlign.center,
@@ -677,9 +679,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
                           ),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: AppColors.backgroundCanvas,
+                        color: context.palette.backgroundCanvas,
                         borderRadius: BorderRadius.circular(AppRadii.md),
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(color: context.palette.border),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(8.0),
@@ -717,29 +719,29 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
         ),
         const SizedBox(height: 16),
         if (widget.isPinnedLocation) ...[
-          const Row(
+          Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
                 Icons.warning_amber_rounded,
                 size: 16,
-                color: AppColors.danger,
+                color: context.palette.danger,
               ),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'This is a pinned location, not your GPS position. A ping sends responders to this pin.',
-                  style: TextStyle(fontSize: 10, color: AppColors.danger),
+                  style: TextStyle(fontSize: 10, color: context.palette.danger),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
         ],
-        const Text(
+        Text(
           '((•)) Ping notifies responders and shares locations both ways.\n'
           '🚗 Go to Help routes you by car to the nearest facility.',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 10),
+          style: TextStyle(color: context.palette.textSecondary, fontSize: 10),
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -828,10 +830,10 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
             Expanded(
               child: Text(
                 _statusHeadline(category),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.danger,
+                  color: context.palette.danger,
                 ),
               ),
             ),
@@ -841,14 +843,14 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
               child: Container(
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: AppColors.backgroundCanvas,
+                  color: context.palette.backgroundCanvas,
                   borderRadius: BorderRadius.circular(AppRadii.sm),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: context.palette.border),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.expand_more,
                   size: 18,
-                  color: AppColors.textSecondary,
+                  color: context.palette.textSecondary,
                 ),
               ),
             ),
@@ -857,7 +859,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
         const SizedBox(height: 6),
         Text(
           _statusBody(category),
-          style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+          style: TextStyle(fontSize: 13, color: context.palette.textPrimary),
         ),
         if (_pingError != null) ...[
           const SizedBox(height: 8),
@@ -880,9 +882,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
         const SizedBox(height: 10),
         RichText(
           text: TextSpan(
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: AppColors.textSecondary,
+              color: context.palette.textSecondary,
             ),
             children: [
               const TextSpan(text: 'Address sent: '),
@@ -890,9 +892,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
                 text: _addressLoading
                     ? 'Working out your address…'
                     : (_address ?? _addressError ?? ''),
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+                  color: context.palette.textPrimary,
                 ),
               ),
             ],
@@ -937,13 +939,13 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
         ] else
           InkWell(
             onTap: _addressLoading ? null : _startEditingAddress,
-            child: const Padding(
+            child: Padding(
               padding: EdgeInsets.only(top: 2),
               child: Text(
                 'Not right? Fix it',
                 style: TextStyle(
                   fontSize: 12,
-                  color: AppColors.primary,
+                  color: context.palette.primary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -951,22 +953,22 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
           ),
         const SizedBox(height: 12),
         if (_voiceSent && !_isRecording) ...[
-          const Text(
+          Text(
             '✓ Voice description sent',
             style: TextStyle(
               fontSize: 12,
-              color: AppColors.success,
+              color: context.palette.success,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 2),
           InkWell(
             onTap: _toggleRecording,
-            child: const Text(
+            child: Text(
               'Record again',
               style: TextStyle(
                 fontSize: 12,
-                color: AppColors.primary,
+                color: context.palette.primary,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -994,7 +996,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
                 : 'Responders will hear this and read a transcript.',
             style: TextStyle(
               fontSize: 11,
-              color: _isRecording ? AppColors.danger : AppColors.textSecondary,
+              color: _isRecording
+                  ? context.palette.danger
+                  : context.palette.textSecondary,
               fontWeight: _isRecording ? FontWeight.w600 : FontWeight.normal,
             ),
           ),
@@ -1036,18 +1040,18 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
               children: [
                 Text(
                   _statusHeadline(category),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.danger,
+                    color: context.palette.danger,
                   ),
                 ),
                 const SizedBox(height: 2),
-                const Text(
+                Text(
                   'Tap for details',
                   style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.textSecondary,
+                    color: context.palette.textSecondary,
                   ),
                 ),
               ],
@@ -1060,9 +1064,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
             child: Container(
               width: 40,
               height: 40,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.danger,
+                color: context.palette.danger,
               ),
               child: const Icon(Icons.call, color: Colors.white, size: 18),
             ),
@@ -1076,12 +1080,12 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
               height: 40,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.backgroundCanvas,
-                border: Border.all(color: AppColors.border),
+                color: context.palette.backgroundCanvas,
+                border: Border.all(color: context.palette.border),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.expand_less,
-                color: AppColors.textSecondary,
+                color: context.palette.textSecondary,
                 size: 20,
               ),
             ),

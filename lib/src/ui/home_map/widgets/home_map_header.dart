@@ -12,9 +12,9 @@ class HomeMapHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.backgroundSurface.withValues(alpha: 0.8),
+        color: context.palette.backgroundSurface.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(AppRadii.full),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.palette.border),
       ),
       alignment: Alignment.center,
       child: Row(
@@ -23,11 +23,17 @@ class HomeMapHeader extends StatelessWidget {
           Image.asset('assets/images/logo.png', width: 22, height: 22),
           const SizedBox(width: 8),
           RichText(
-            text: const TextSpan(
+            text: TextSpan(
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
               children: [
-                TextSpan(text: '911 ', style: TextStyle(color: AppColors.primary)),
-                TextSpan(text: 'Rescue', style: TextStyle(color: AppColors.success)),
+                TextSpan(
+                  text: '911 ',
+                  style: TextStyle(color: context.palette.primary),
+                ),
+                TextSpan(
+                  text: 'Rescue',
+                  style: TextStyle(color: context.palette.success),
+                ),
               ],
             ),
           ),

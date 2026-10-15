@@ -65,14 +65,14 @@ class AppButton extends StatelessWidget {
   TextStyle get _resolvedTextStyle =>
       fontSize == null ? _textStyle : _textStyle.copyWith(fontSize: fontSize);
 
-  Color get _color => switch (variant) {
-    AppButtonVariant.primary => AppColors.primary,
-    AppButtonVariant.success => AppColors.success,
-    AppButtonVariant.danger => AppColors.danger,
-    AppButtonVariant.warning => AppColors.warning,
-    AppButtonVariant.secondary => AppColors.primary,
-    AppButtonVariant.neutral => AppColors.textSecondary,
-    AppButtonVariant.plain => AppColors.textPrimary,
+  Color _color(BuildContext context) => switch (variant) {
+    AppButtonVariant.primary => context.palette.primary,
+    AppButtonVariant.success => context.palette.success,
+    AppButtonVariant.danger => context.palette.danger,
+    AppButtonVariant.warning => context.palette.warning,
+    AppButtonVariant.secondary => context.palette.primary,
+    AppButtonVariant.neutral => context.palette.textSecondary,
+    AppButtonVariant.plain => context.palette.textPrimary,
   };
 
   @override
@@ -81,9 +81,9 @@ class AppButton extends StatelessWidget {
       return _build(
         outlined: true,
         style: OutlinedButton.styleFrom(
-          backgroundColor: AppColors.backgroundSurface,
-          foregroundColor: AppColors.primary,
-          side: const BorderSide(color: AppColors.border),
+          backgroundColor: context.palette.backgroundSurface,
+          foregroundColor: context.palette.primary,
+          side: BorderSide(color: context.palette.border),
           shape: _shape,
           padding: _resolvedPadding,
           textStyle: _resolvedTextStyle,
@@ -98,9 +98,9 @@ class AppButton extends StatelessWidget {
       return _build(
         outlined: true,
         style: OutlinedButton.styleFrom(
-          backgroundColor: AppColors.backgroundSurface,
-          foregroundColor: AppColors.textPrimary,
-          side: const BorderSide(color: AppColors.border),
+          backgroundColor: context.palette.backgroundSurface,
+          foregroundColor: context.palette.textPrimary,
+          side: BorderSide(color: context.palette.border),
           shape: _shape,
           padding: _resolvedPadding,
           textStyle: _resolvedTextStyle,
@@ -112,9 +112,9 @@ class AppButton extends StatelessWidget {
       return _build(
         outlined: true,
         style: OutlinedButton.styleFrom(
-          backgroundColor: AppColors.backgroundCanvas,
-          foregroundColor: AppColors.textSecondary,
-          side: const BorderSide(color: AppColors.border),
+          backgroundColor: context.palette.backgroundCanvas,
+          foregroundColor: context.palette.textSecondary,
+          side: BorderSide(color: context.palette.border),
           shape: _shape,
           padding: _resolvedPadding,
           textStyle: _resolvedTextStyle,
@@ -122,13 +122,17 @@ class AppButton extends StatelessWidget {
       );
     }
 
-    final color = _color;
+    final color = _color(context);
     if (filled) {
       return _build(
         outlined: false,
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
-          foregroundColor: Colors.white,
+          foregroundColor: switch (variant) {
+            AppButtonVariant.primary ||
+            AppButtonVariant.secondary => context.palette.onAccent,
+            _ => Colors.white,
+          },
           elevation: 0,
           shape: _shape,
           padding: _resolvedPadding,

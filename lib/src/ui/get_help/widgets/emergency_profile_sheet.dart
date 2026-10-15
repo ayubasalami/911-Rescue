@@ -14,7 +14,8 @@ class EmergencyProfileSheet extends ConsumerStatefulWidget {
   const EmergencyProfileSheet({super.key});
 
   @override
-  ConsumerState<EmergencyProfileSheet> createState() => _EmergencyProfileSheetState();
+  ConsumerState<EmergencyProfileSheet> createState() =>
+      _EmergencyProfileSheetState();
 }
 
 class _EmergencyProfileSheetState extends ConsumerState<EmergencyProfileSheet> {
@@ -76,8 +77,8 @@ class _EmergencyProfileSheetState extends ConsumerState<EmergencyProfileSheet> {
 
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
-      decoration: const BoxDecoration(
-        color: AppColors.backgroundSurface,
+      decoration: BoxDecoration(
+        color: context.palette.backgroundSurface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.lg)),
       ),
       child: SingleChildScrollView(
@@ -88,23 +89,33 @@ class _EmergencyProfileSheetState extends ConsumerState<EmergencyProfileSheet> {
             Row(
               children: [
                 const Expanded(
-                  child: Text('Emergency profile', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                  child: Text(
+                    'Emergency profile',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
                 ),
                 InkWell(
                   onTap: () => Navigator.of(context).maybePop(),
                   borderRadius: BorderRadius.circular(AppRadii.full),
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.all(4),
-                    child: Icon(Icons.close, size: 20, color: AppColors.textSecondary),
+                    child: Icon(
+                      Icons.close,
+                      size: 20,
+                      color: context.palette.textSecondary,
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Sent to the responder with your SOS, so they arrive knowing what matters. '
               'Stored only on this device.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              style: TextStyle(
+                color: context.palette.textSecondary,
+                fontSize: 13,
+              ),
             ),
             const SizedBox(height: 16),
             if (profileAsync.isLoading && !_initialized)
@@ -113,11 +124,31 @@ class _EmergencyProfileSheetState extends ConsumerState<EmergencyProfileSheet> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else ...[
-              _ProfileField(label: 'FULL NAME', controller: _fullNameController, hint: 'Adaeze Okonkwo'),
-              _ProfileField(label: 'BLOOD GROUP', controller: _bloodGroupController, hint: 'O+'),
-              _ProfileField(label: 'CONDITIONS', controller: _conditionsController, hint: 'Asthma, diabetes'),
-              _ProfileField(label: 'ALLERGIES', controller: _allergiesController, hint: 'Penicillin'),
-              _ProfileField(label: 'NEXT OF KIN', controller: _nextOfKinController, hint: 'Sister'),
+              _ProfileField(
+                label: 'FULL NAME',
+                controller: _fullNameController,
+                hint: 'Adaeze Okonkwo',
+              ),
+              _ProfileField(
+                label: 'BLOOD GROUP',
+                controller: _bloodGroupController,
+                hint: 'O+',
+              ),
+              _ProfileField(
+                label: 'CONDITIONS',
+                controller: _conditionsController,
+                hint: 'Asthma, diabetes',
+              ),
+              _ProfileField(
+                label: 'ALLERGIES',
+                controller: _allergiesController,
+                hint: 'Penicillin',
+              ),
+              _ProfileField(
+                label: 'NEXT OF KIN',
+                controller: _nextOfKinController,
+                hint: 'Sister',
+              ),
               _ProfileField(
                 label: 'NEXT OF KIN PHONE',
                 controller: _nextOfKinPhoneController,
@@ -127,10 +158,16 @@ class _EmergencyProfileSheetState extends ConsumerState<EmergencyProfileSheet> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Expanded(child: AppButton(label: 'Save profile', onPressed: _save)),
+                  Expanded(
+                    child: AppButton(label: 'Save profile', onPressed: _save),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: AppButton(label: 'Clear', variant: AppButtonVariant.secondary, onPressed: _clear),
+                    child: AppButton(
+                      label: 'Clear',
+                      variant: AppButtonVariant.secondary,
+                      onPressed: _clear,
+                    ),
                   ),
                 ],
               ),
@@ -164,10 +201,10 @@ class _ProfileField extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
+              color: context.palette.textSecondary,
               letterSpacing: 0.5,
             ),
           ),
@@ -178,8 +215,11 @@ class _ProfileField extends StatelessWidget {
             decoration: InputDecoration(
               hintText: hint,
               filled: true,
-              fillColor: AppColors.backgroundCanvas,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              fillColor: context.palette.backgroundCanvas,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(AppRadii.sm),
                 borderSide: BorderSide.none,

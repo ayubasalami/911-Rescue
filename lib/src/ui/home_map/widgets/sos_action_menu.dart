@@ -24,14 +24,14 @@ class SosActionMenu extends StatelessWidget {
         _ActionPill(
           icon: Icons.chat_bubble_outline,
           label: 'Report Incident',
-          color: AppColors.primary,
+          color: context.palette.primary,
           onTap: onReportIncident,
         ),
         const SizedBox(height: 10),
         _ActionPill(
           icon: Icons.call,
           label: 'Call for Help - 112',
-          color: AppColors.danger,
+          color: context.palette.danger,
           onTap: onCallForHelp,
         ),
       ],
@@ -54,6 +54,10 @@ class _ActionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // White on the SOS pink, the theme's button text on the blue.
+    final foreground = color == context.palette.danger
+        ? Colors.white
+        : context.palette.onAccent;
     return Material(
       color: color,
       borderRadius: BorderRadius.circular(AppRadii.full),
@@ -67,12 +71,12 @@ class _ActionPill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: Colors.white, size: 18),
+              Icon(icon, color: foreground, size: 18),
               const SizedBox(width: 8),
               Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: foreground,
                   fontWeight: FontWeight.w600,
                 ),
               ),

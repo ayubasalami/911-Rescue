@@ -7,23 +7,28 @@ import '../../../data/models/access_analysis.dart';
 /// match rather than an approximated Material icon.
 extension TransportModeEmoji on TransportMode {
   String get emoji => switch (this) {
-        TransportMode.driving => '🚗',
-        TransportMode.walking => '🚶',
-        TransportMode.motorbike => '🏍️',
-        TransportMode.cycling => '🚲',
-      };
+    TransportMode.driving => '🚗',
+    TransportMode.walking => '🚶',
+    TransportMode.motorbike => '🏍️',
+    TransportMode.cycling => '🚲',
+  };
 
   /// Matches the web platform's Commute Mode dropdown option text.
   String get dropdownLabel => switch (this) {
-        TransportMode.driving => 'Driving (Lagos Traffic)',
-        TransportMode.walking => 'Walking',
-        TransportMode.motorbike => 'Motorbike',
-        TransportMode.cycling => 'Cycling',
-      };
+    TransportMode.driving => 'Driving (Lagos Traffic)',
+    TransportMode.walking => 'Walking',
+    TransportMode.motorbike => 'Motorbike',
+    TransportMode.cycling => 'Cycling',
+  };
 }
 
 class TransportModeButton extends StatelessWidget {
-  const TransportModeButton({super.key, required this.mode, required this.selected, required this.onTap});
+  const TransportModeButton({
+    super.key,
+    required this.mode,
+    required this.selected,
+    required this.onTap,
+  });
 
   final TransportMode mode;
   final bool selected;
@@ -32,7 +37,9 @@ class TransportModeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: selected ? AppColors.primary : AppColors.backgroundCanvas,
+      color: selected
+          ? context.palette.primary
+          : context.palette.backgroundCanvas,
       borderRadius: BorderRadius.circular(AppRadii.sm),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppRadii.sm),

@@ -136,7 +136,7 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
         children: [
           Row(
             children: [
-              const Icon(Icons.circle, color: AppColors.success, size: 10),
+              Icon(Icons.circle, color: context.palette.success, size: 10),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
@@ -199,7 +199,7 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
                   decoration: InputDecoration(
                     hintText: 'Describe your symptoms...',
                     filled: true,
-                    fillColor: AppColors.backgroundCanvas,
+                    fillColor: context.palette.backgroundCanvas,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 12,
@@ -214,15 +214,19 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
               const SizedBox(width: 8),
               Material(
                 color: (_hasText && !_sending)
-                    ? AppColors.primary
-                    : AppColors.border,
+                    ? context.palette.primary
+                    : context.palette.border,
                 shape: const CircleBorder(),
                 child: InkWell(
                   customBorder: const CircleBorder(),
                   onTap: (_hasText && !_sending) ? _send : null,
-                  child: const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Icon(Icons.send, color: Colors.white, size: 20),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Icon(
+                      Icons.send,
+                      color: context.palette.onAccent,
+                      size: 20,
+                    ),
                   ),
                 ),
               ),
@@ -237,7 +241,7 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
     _UserEntry() => _userBubble(entry.text),
     _LoadingEntry() => _loadingBubble(),
     _ErrorEntry() => _assistantBubble(
-      Text(entry.message, style: const TextStyle(color: AppColors.danger)),
+      Text(entry.message, style: TextStyle(color: context.palette.danger)),
     ),
     _AssessmentEntry() => _assessmentBubble(entry.assessment),
   };
@@ -251,16 +255,16 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const CircleAvatar(
+        CircleAvatar(
           radius: 16,
-          backgroundColor: AppColors.primary,
+          backgroundColor: context.palette.primary,
           child: Text('🏥', style: TextStyle(fontSize: 16)),
         ),
         const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: AppColors.backgroundCanvas,
+            color: context.palette.backgroundCanvas,
             borderRadius: BorderRadius.circular(AppRadii.md),
           ),
           child: const SizedBox(
@@ -280,10 +284,10 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
       padding: const EdgeInsets.all(12),
       constraints: const BoxConstraints(maxWidth: 260),
       decoration: BoxDecoration(
-        color: AppColors.primary,
+        color: context.palette.primary,
         borderRadius: BorderRadius.circular(AppRadii.md),
       ),
-      child: Text(text, style: const TextStyle(color: Colors.white)),
+      child: Text(text, style: TextStyle(color: context.palette.onAccent)),
     ),
   );
 
@@ -301,7 +305,9 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
       children: [
         CircleAvatar(
           radius: 16,
-          backgroundColor: emergency ? AppColors.danger : AppColors.primary,
+          backgroundColor: emergency
+              ? context.palette.danger
+              : context.palette.primary,
           child: Text(
             emergency ? '🚨' : '🏥',
             style: const TextStyle(fontSize: 16),
@@ -313,11 +319,13 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: emergency
-                  ? AppColors.danger.withValues(alpha: 0.1)
+                  ? context.palette.danger.withValues(alpha: 0.1)
                   : sensitive
-                  ? AppColors.primary.withValues(alpha: 0.06)
-                  : AppColors.backgroundCanvas,
-              border: emergency ? Border.all(color: AppColors.danger) : null,
+                  ? context.palette.primary.withValues(alpha: 0.06)
+                  : context.palette.backgroundCanvas,
+              border: emergency
+                  ? Border.all(color: context.palette.danger)
+                  : null,
               borderRadius: BorderRadius.circular(AppRadii.md),
             ),
             child: child,
@@ -374,19 +382,22 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
             const SizedBox(height: 8),
             Text(
               'This may also need ${secondary.apiValue}.',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: AppColors.primary,
+                color: context.palette.primary,
                 fontStyle: FontStyle.italic,
               ),
             ),
           ],
           if (assessment.source == TriageSource.local) ...[
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Answered offline — AI triage unavailable, so this is a simpler '
               'keyword match.',
-              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              style: TextStyle(
+                fontSize: 11,
+                color: context.palette.textSecondary,
+              ),
             ),
           ],
           if (emergency) ...[
@@ -394,7 +405,7 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
             _actionButton(
               label: 'Call 112 Now',
               icon: Icons.call,
-              color: AppColors.danger,
+              color: context.palette.danger,
               onPressed: widget.onCall112,
             ),
           ],
@@ -410,7 +421,7 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
       _actionButton(
         label: label,
         icon: Icons.location_on_outlined,
-        color: _webGreen,
+        color: context.palette.accentGreen,
         onPressed: () => widget.onNavigateTo(navigation),
       );
 
@@ -432,13 +443,12 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
       ),
       style: FilledButton.styleFrom(
         backgroundColor: color,
-        foregroundColor: Colors.white,
+        foregroundColor: color == context.palette.danger
+            ? Colors.white
+            : context.palette.onAccent,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     ),
   );
 }
-
-/// The web's `--accent-green`.
-const _webGreen = Color(0xFF00AA55);

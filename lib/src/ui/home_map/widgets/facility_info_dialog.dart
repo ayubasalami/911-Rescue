@@ -75,12 +75,6 @@ const _defaults = {
   ),
 };
 
-/// The web's `--input-bg`.
-const _inputBg = Color(0xFFF0F2F5);
-
-/// The web's `--accent-green`.
-const _webGreen = Color(0xFF00AA55);
-
 class FacilityInfoDialog extends ConsumerWidget {
   const FacilityInfoDialog({
     super.key,
@@ -124,19 +118,19 @@ class FacilityInfoDialog extends ConsumerWidget {
         ? 'Location'
         : _nonBlank(facility.rawCategory) ?? 'Health Facility';
 
-    const muted = TextStyle(
-      color: AppColors.textSecondary,
+    final muted = TextStyle(
+      color: context.palette.textSecondary,
       fontSize: 13,
       height: 1.6,
     );
-    const link = TextStyle(color: AppColors.primary, fontSize: 13);
+    final link = TextStyle(color: context.palette.primary, fontSize: 13);
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppRadii.lg),
-        side: const BorderSide(color: AppColors.border),
+        side: BorderSide(color: context.palette.border),
       ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 460),
@@ -188,8 +182,8 @@ class FacilityInfoDialog extends ConsumerWidget {
                   children: [
                     Text(
                       facility.name,
-                      style: const TextStyle(
-                        color: AppColors.primary,
+                      style: TextStyle(
+                        color: context.palette.primary,
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
@@ -201,14 +195,14 @@ class FacilityInfoDialog extends ConsumerWidget {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: _inputBg,
+                        color: context.palette.inputBg,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(color: context.palette.border),
                       ),
                       child: Text(
                         category.toUpperCase(),
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: context.palette.textSecondary,
                           fontSize: 11,
                         ),
                       ),
@@ -218,7 +212,7 @@ class FacilityInfoDialog extends ConsumerWidget {
                       width: double.infinity,
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: _inputBg,
+                        color: context.palette.inputBg,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
@@ -257,10 +251,7 @@ class FacilityInfoDialog extends ConsumerWidget {
                                 : InkWell(
                                     onTap: () =>
                                         _open(context, Uri.parse(website)),
-                                    child: const Text(
-                                      'Visit Website',
-                                      style: link,
-                                    ),
+                                    child: Text('Visit Website', style: link),
                                   ),
                           ),
                         ],
@@ -287,8 +278,8 @@ class FacilityInfoDialog extends ConsumerWidget {
                         icon: const Icon(Icons.location_on_outlined, size: 16),
                         label: const Text('Get Directions'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: _webGreen,
-                          foregroundColor: Colors.white,
+                          backgroundColor: context.palette.accentGreen,
+                          foregroundColor: context.palette.onAccent,
                           padding: const EdgeInsets.all(11),
                           textStyle: const TextStyle(
                             fontSize: 14,
@@ -333,10 +324,10 @@ class _HeaderFallback extends StatelessWidget {
         child: crest != null
             ? Image.asset(crest, width: 72, height: 72)
             : facility.isPlace
-            ? const Icon(
+            ? Icon(
                 Icons.location_on_outlined,
                 size: 56,
-                color: AppColors.textSecondary,
+                color: context.palette.textSecondary,
               )
             : FacilityCategoryGlyph(
                 category: facility.category,

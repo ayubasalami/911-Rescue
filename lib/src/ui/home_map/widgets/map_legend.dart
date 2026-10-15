@@ -52,7 +52,7 @@ class MapLegend extends StatelessWidget {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFDDDDDD)),
+              border: Border.all(color: context.palette.border),
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -60,7 +60,7 @@ class MapLegend extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Facilities', style: _headerStyle),
+                  Text('Facilities', style: _headerStyle(context)),
                   const SizedBox(height: 3),
                   for (final category in FacilityCategory.values)
                     _LegendRow(
@@ -72,7 +72,7 @@ class MapLegend extends StatelessWidget {
                       label: category.displayLabel,
                     ),
                   const SizedBox(height: 10),
-                  Text(mode.timeLegendTitle, style: _headerStyle),
+                  Text(mode.timeLegendTitle, style: _headerStyle(context)),
                   const SizedBox(height: 3),
                   const _LegendRow(
                     icon: _DashedLine(),
@@ -133,8 +133,8 @@ class _OuterShadowPainter extends CustomPainter {
   bool shouldRepaint(_OuterShadowPainter oldDelegate) => false;
 }
 
-const _headerStyle = TextStyle(
-  color: AppColors.primary,
+TextStyle _headerStyle(BuildContext context) => TextStyle(
+  color: context.palette.primary,
   fontWeight: FontWeight.bold,
   fontSize: 12,
 );
@@ -156,10 +156,10 @@ class _LegendRow extends StatelessWidget {
           const SizedBox(width: 7),
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 10.5,
               height: 1.2,
-              color: AppColors.textPrimary,
+              color: context.palette.textPrimary,
             ),
           ),
         ],
@@ -182,7 +182,7 @@ class _DashedLine extends StatelessWidget {
           (index) => Expanded(
             child: Container(
               margin: EdgeInsets.only(right: index == 2 ? 0 : 1.5),
-              color: AppColors.primary,
+              color: context.palette.primary,
             ),
           ),
         ),

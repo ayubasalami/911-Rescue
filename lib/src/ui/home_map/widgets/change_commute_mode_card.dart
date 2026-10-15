@@ -21,7 +21,7 @@ class ChangeCommuteModeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.backgroundSurface,
+      color: context.palette.backgroundSurface,
       borderRadius: BorderRadius.circular(AppRadii.md),
       elevation: 6,
       shadowColor: Colors.black26,
@@ -34,14 +34,21 @@ class ChangeCommuteModeCard extends StatelessWidget {
             Row(
               children: [
                 const Expanded(
-                  child: Text('Change commute mode', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  child: Text(
+                    'Change commute mode',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
                 ),
                 InkWell(
                   onTap: onClose,
                   borderRadius: BorderRadius.circular(AppRadii.full),
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.all(2),
-                    child: Icon(Icons.close, size: 16, color: AppColors.textSecondary),
+                    child: Icon(
+                      Icons.close,
+                      size: 16,
+                      color: context.palette.textSecondary,
+                    ),
                   ),
                 ),
               ],
@@ -57,7 +64,8 @@ class ChangeCommuteModeCard extends StatelessWidget {
                       onTap: () => onModeSelected(mode),
                     ),
                   ),
-                  if (mode != TransportMode.values.last) const SizedBox(width: 8),
+                  if (mode != TransportMode.values.last)
+                    const SizedBox(width: 8),
                 ],
               ],
             ),

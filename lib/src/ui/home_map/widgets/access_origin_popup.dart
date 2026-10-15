@@ -31,7 +31,7 @@ class AccessOriginPopup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.backgroundSurface,
+      color: context.palette.backgroundSurface,
       borderRadius: BorderRadius.circular(AppRadii.md),
       elevation: 8,
       shadowColor: Colors.black26,
@@ -43,17 +43,17 @@ class AccessOriginPopup extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.location_on,
-                  color: AppColors.primary,
+                  color: context.palette.primary,
                   size: 20,
                 ),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(
-                      color: AppColors.primary,
+                    style: TextStyle(
+                      color: context.palette.primary,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -62,12 +62,12 @@ class AccessOriginPopup extends StatelessWidget {
                 InkWell(
                   onTap: onClose,
                   borderRadius: BorderRadius.circular(AppRadii.full),
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.all(4),
                     child: Icon(
                       Icons.close,
                       size: 18,
-                      color: AppColors.textSecondary,
+                      color: context.palette.textSecondary,
                     ),
                   ),
                 ),

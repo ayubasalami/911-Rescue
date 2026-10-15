@@ -12,7 +12,7 @@ class CalculatingRouteOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.backgroundCanvas.withValues(alpha: 0.9),
+      color: context.palette.backgroundCanvas.withValues(alpha: 0.9),
       alignment: Alignment.center,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -24,9 +24,12 @@ class CalculatingRouteOverlay extends StatelessWidget {
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Fetching live road data',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            style: TextStyle(
+              color: context.palette.textSecondary,
+              fontSize: 13,
+            ),
           ),
         ],
       ),

@@ -200,7 +200,7 @@ class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 300),
       child: Material(
-        color: AppColors.backgroundSurface,
+        color: context.palette.backgroundSurface,
         borderRadius: BorderRadius.circular(AppRadii.md),
         elevation: 8,
         shadowColor: Colors.black26,
@@ -212,25 +212,25 @@ class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
             children: [
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Route Planner',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 20,
-                        color: AppColors.primary,
+                        color: context.palette.primary,
                       ),
                     ),
                   ),
                   InkWell(
                     onTap: widget.onClose,
                     borderRadius: BorderRadius.circular(AppRadii.full),
-                    child: const Padding(
+                    child: Padding(
                       padding: EdgeInsets.all(4),
                       child: Icon(
                         Icons.close,
                         size: 18,
-                        color: AppColors.textSecondary,
+                        color: context.palette.textSecondary,
                       ),
                     ),
                   ),
@@ -240,7 +240,7 @@ class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
               _PlaceSearchField(
                 controller: _originController,
                 hint: 'Type or tap map to set origin',
-                dotColor: AppColors.success,
+                dotColor: context.palette.success,
                 onSelected: _setOrigin,
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -248,12 +248,12 @@ class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
                     InkWell(
                       onTap: _useCurrentLocation,
                       borderRadius: BorderRadius.circular(AppRadii.full),
-                      child: const Padding(
+                      child: Padding(
                         padding: EdgeInsets.all(6),
                         child: Icon(
                           Icons.my_location,
                           size: 18,
-                          color: AppColors.primary,
+                          color: context.palette.primary,
                         ),
                       ),
                     ),
@@ -273,10 +273,12 @@ class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
                       padding: const EdgeInsets.all(4),
                       child: Container(
                         decoration: BoxDecoration(
-                          color: AppColors.backgroundSurface,
+                          color: context.palette.backgroundSurface,
                           shape: BoxShape.circle,
                           border: Border.all(
-                            color: AppColors.textPrimary.withValues(alpha: 0.2),
+                            color: context.palette.textPrimary.withValues(
+                              alpha: 0.2,
+                            ),
                           ),
                         ),
                         child: Padding(
@@ -284,7 +286,7 @@ class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
                           child: Icon(
                             Icons.swap_vert,
                             size: 18,
-                            color: AppColors.primary,
+                            color: context.palette.primary,
                           ),
                         ),
                       ),
@@ -295,7 +297,7 @@ class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
               _PlaceSearchField(
                 controller: _destinationController,
                 hint: 'Type or tap map to set destination',
-                dotColor: AppColors.danger,
+                dotColor: context.palette.danger,
                 onSelected: _setDestination,
                 trailing: _DropPinButton(
                   onTap: () => widget.onDropPin(PlannerEndpoint.destination),
@@ -334,12 +336,12 @@ class _DropPinButton extends StatelessWidget {
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(AppRadii.full),
-    child: const Padding(
+    child: Padding(
       padding: EdgeInsets.fromLTRB(3, 6, 8, 6),
       child: Icon(
         Icons.location_on_outlined,
         size: 17,
-        color: AppColors.textSecondary,
+        color: context.palette.textSecondary,
       ),
     ),
   );
@@ -444,9 +446,9 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: AppColors.backgroundCanvas,
+              color: context.palette.backgroundCanvas,
               borderRadius: BorderRadius.circular(AppRadii.sm),
-              border: Border.all(color: AppColors.border),
+              border: Border.all(color: context.palette.border),
             ),
             child: Row(
               children: [
@@ -497,17 +499,17 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Text(
                 error,
-                style: const TextStyle(color: AppColors.danger, fontSize: 12),
+                style: TextStyle(color: context.palette.danger, fontSize: 12),
               ),
             )
           else if (_results != null)
             if (_results!.isEmpty)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: 6),
                 child: Text(
                   'No matches',
                   style: TextStyle(
-                    color: AppColors.textSecondary,
+                    color: context.palette.textSecondary,
                     fontSize: 12,
                   ),
                 ),
@@ -517,9 +519,9 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
                 margin: const EdgeInsets.only(top: 4),
                 constraints: const BoxConstraints(maxHeight: 160),
                 decoration: BoxDecoration(
-                  color: AppColors.backgroundSurface,
+                  color: context.palette.backgroundSurface,
                   borderRadius: BorderRadius.circular(AppRadii.sm),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: context.palette.border),
                 ),
                 child: ListView(
                   shrinkWrap: true,

@@ -30,9 +30,11 @@ class AppFilterChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primary : AppColors.backgroundSurface,
+          color: selected
+              ? context.palette.primary
+              : context.palette.backgroundSurface,
           borderRadius: BorderRadius.circular(AppRadii.full),
-          border: selected ? null : Border.all(color: AppColors.border),
+          border: selected ? null : Border.all(color: context.palette.border),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -41,7 +43,9 @@ class AppFilterChip extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                color: selected ? Colors.white : AppColors.textPrimary,
+                color: selected
+                    ? context.palette.onAccent
+                    : context.palette.textPrimary,
                 fontWeight: FontWeight.w600,
                 fontSize: 14,
               ),

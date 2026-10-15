@@ -47,7 +47,6 @@ class _SosFabState extends State<SosFab> with SingleTickerProviderStateMixin {
     }
   }
 
-  static const _ringColor = Color(0xFFD9004C);
   static const _maxSpread = 12.0;
   static const _maxAlpha = 0.55;
 
@@ -83,7 +82,9 @@ class _SosFabState extends State<SosFab> with SingleTickerProviderStateMixin {
       curve: _spring,
       child: FloatingActionButton(
         shape: const CircleBorder(),
-        backgroundColor: open ? AppColors.textSecondary : AppColors.danger,
+        backgroundColor: open
+            ? context.palette.textSecondary
+            : context.palette.danger,
         onPressed: widget.onPressed,
         child: open
             ? const Text(
@@ -106,7 +107,7 @@ class _SosFabState extends State<SosFab> with SingleTickerProviderStateMixin {
             boxShadow: [
               if (showRing)
                 BoxShadow(
-                  color: _ringColor.withValues(alpha: alpha),
+                  color: context.palette.danger.withValues(alpha: alpha),
                   spreadRadius: spread,
                 ),
             ],

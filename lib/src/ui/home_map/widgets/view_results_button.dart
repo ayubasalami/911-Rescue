@@ -23,15 +23,27 @@ class ViewResultsButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(AppRadii.full),
-            gradient: const LinearGradient(colors: [AppColors.primary, AppColors.success]),
+            gradient: LinearGradient(
+              colors: [context.palette.primary, context.palette.success],
+            ),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.bar_chart_rounded, color: Colors.white, size: 18),
-              SizedBox(width: 8),
-              Text('View Results', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              Icon(
+                Icons.bar_chart_rounded,
+                color: context.palette.onAccent,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'View Results',
+                style: TextStyle(
+                  color: context.palette.onAccent,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
         ),

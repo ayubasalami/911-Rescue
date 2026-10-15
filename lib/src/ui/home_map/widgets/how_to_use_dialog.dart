@@ -159,9 +159,6 @@ const _pages = [
   ),
 ];
 
-/// The web's `--accent-green`.
-const _webGreen = Color(0xFF00AA55);
-
 class HowToUseDialog extends StatefulWidget {
   const HowToUseDialog({super.key});
 
@@ -177,8 +174,8 @@ class _HowToUseDialogState extends State<HowToUseDialog> {
     final page = _pages[_index];
     final isFirst = _index == 0;
     final isLast = _index == _pages.length - 1;
-    const muted = TextStyle(
-      color: AppColors.textSecondary,
+    final muted = TextStyle(
+      color: context.palette.textSecondary,
       fontSize: 13,
       height: 1.6,
     );
@@ -201,8 +198,8 @@ class _HowToUseDialogState extends State<HowToUseDialog> {
                   Text(
                     page.title,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: _webGreen,
+                    style: TextStyle(
+                      color: context.palette.accentGreen,
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
@@ -221,7 +218,7 @@ class _HowToUseDialogState extends State<HowToUseDialog> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('•  ', style: muted),
+                          Text('•  ', style: muted),
                           Expanded(
                             child: Text.rich(
                               TextSpan(
@@ -229,9 +226,9 @@ class _HowToUseDialogState extends State<HowToUseDialog> {
                                 children: [
                                   TextSpan(
                                     text: '$label: ',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      color: AppColors.textPrimary,
+                                      color: context.palette.textPrimary,
                                     ),
                                   ),
                                   TextSpan(text: text),
@@ -270,10 +267,9 @@ class _HowToUseDialogState extends State<HowToUseDialog> {
                                   // Darker than the web's border-colour dots,
                                   // which almost vanish on a white dialog.
                                   color: i == _index
-                                      ? AppColors.primary
-                                      : AppColors.textSecondary.withValues(
-                                          alpha: 0.35,
-                                        ),
+                                      ? context.palette.primary
+                                      : context.palette.textSecondary
+                                            .withValues(alpha: 0.35),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                               ),
@@ -301,7 +297,7 @@ class _HowToUseDialogState extends State<HowToUseDialog> {
               child: IconButton(
                 tooltip: 'Close',
                 onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close, color: AppColors.textSecondary),
+                icon: Icon(Icons.close, color: context.palette.textSecondary),
               ),
             ),
           ],
@@ -330,10 +326,12 @@ class _TutorialButton extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: radius,
         gradient: primary
-            ? const LinearGradient(colors: [AppColors.primary, _webGreen])
+            ? LinearGradient(
+                colors: [context.palette.primary, context.palette.accentGreen],
+              )
             : null,
-        color: primary ? null : AppColors.backgroundCanvas,
-        border: primary ? null : Border.all(color: AppColors.border),
+        color: primary ? null : context.palette.backgroundCanvas,
+        border: primary ? null : Border.all(color: context.palette.border),
       ),
       child: Material(
         type: MaterialType.transparency,
@@ -348,7 +346,9 @@ class _TutorialButton extends StatelessWidget {
               style: TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
-                color: primary ? Colors.white : AppColors.textPrimary,
+                color: primary
+                    ? context.palette.onAccent
+                    : context.palette.textPrimary,
               ),
             ),
           ),

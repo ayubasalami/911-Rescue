@@ -929,8 +929,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       onTapListener: _onMapTapped,
                       onCameraChangeListener: _onCameraChanged,
                     )
-                  : Container(color: AppColors.backgroundCanvas),
-              orElse: () => Container(color: AppColors.backgroundCanvas),
+                  : Container(color: context.palette.backgroundCanvas),
+              orElse: () => Container(color: context.palette.backgroundCanvas),
             ),
           ),
           if (homeMapAsync.isLoading)
@@ -966,7 +966,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             top: 6 + topInset,
             left: 16,
             child: MapControlButton(
-              icon: const Icon(Icons.menu, color: AppColors.primary, size: 20),
+              icon: Icon(Icons.menu, color: context.palette.primary, size: 20),
               onTap: () => _scaffoldKey.currentState?.openDrawer(),
             ),
           ),
@@ -1053,7 +1053,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 // legend turns blue and traffic amber while switched on.
                 MapControlButton(
                   icon: MapControlIcon.locate.build(
-                    color: AppColors.primary,
+                    color: context.palette.primary,
                     size: _controlIconSize,
                   ),
                   onTap: _recenterOnUser,
@@ -1061,7 +1061,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 const SizedBox(height: 8),
                 MapControlButton(
                   icon: MapControlIcon.home.build(
-                    color: AppColors.textPrimary,
+                    color: context.palette.textPrimary,
                     size: _controlIconSize,
                   ),
                   onTap: _resetToDefaultView,
@@ -1069,7 +1069,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 const SizedBox(height: 8),
                 MapControlButton(
                   icon: MapControlIcon.search.build(
-                    color: AppColors.textPrimary,
+                    color: context.palette.textPrimary,
                     size: _controlIconSize,
                   ),
                   onTap: () {
@@ -1080,7 +1080,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 const SizedBox(height: 8),
                 MapControlButton(
                   icon: MapControlIcon.routePlanner.build(
-                    color: AppColors.primary,
+                    color: context.palette.primary,
                     size: _controlIconSize,
                   ),
                   onTap: _viewModel.toggleRoutePlanner,
@@ -1089,8 +1089,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 MapControlButton(
                   icon: MapControlIcon.legend.build(
                     color: (state?.showLegend ?? true)
-                        ? AppColors.primary
-                        : AppColors.textPrimary,
+                        ? context.palette.primary
+                        : context.palette.textPrimary,
                     size: _controlIconSize,
                   ),
                   onTap: _viewModel.toggleLegend,
@@ -1098,7 +1098,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 const SizedBox(height: 8),
                 MapControlButton(
                   icon: MapControlIcon.clear.build(
-                    color: AppColors.danger,
+                    color: context.palette.danger,
                     size: _controlIconSize,
                   ),
                   onTap: _clearActiveFeature,
@@ -1107,8 +1107,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 MapControlButton(
                   icon: MapControlIcon.traffic.build(
                     color: (state?.showLiveTraffic ?? false)
-                        ? AppColors.warning
-                        : AppColors.textPrimary,
+                        ? context.palette.warning
+                        : context.palette.textPrimary,
                     size: _controlIconSize,
                   ),
                   onTap: _viewModel.toggleLiveTrafficLayer,
@@ -1443,11 +1443,18 @@ class _PopupTail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(size: const Size(20, 10), painter: _PopupTailPainter());
+    return CustomPaint(
+      size: const Size(20, 10),
+      painter: _PopupTailPainter(color: context.palette.backgroundSurface),
+    );
   }
 }
 
 class _PopupTailPainter extends CustomPainter {
+  _PopupTailPainter({required this.color});
+
+  final Color color;
+
   @override
   void paint(Canvas canvas, Size size) {
     final path = Path()
@@ -1455,11 +1462,12 @@ class _PopupTailPainter extends CustomPainter {
       ..lineTo(size.width, 0)
       ..lineTo(size.width / 2, size.height)
       ..close();
-    canvas.drawPath(path, Paint()..color = AppColors.backgroundSurface);
+    canvas.drawPath(path, Paint()..color = color);
   }
 
   @override
-  bool shouldRepaint(covariant _PopupTailPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _PopupTailPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 /// A zero-size but still-`Positioned` placeholder — see the comment at its
@@ -1518,16 +1526,16 @@ class _PingRadarPulseState extends State<_PingRadarPulse>
                   height: widget.size * t,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppColors.danger.withValues(alpha: 0.15),
+                    color: context.palette.danger.withValues(alpha: 0.15),
                   ),
                 ),
               ),
               Container(
                 width: 16,
                 height: 16,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.danger,
+                  color: context.palette.danger,
                 ),
               ),
             ],
@@ -1548,7 +1556,7 @@ class _DropPinBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-    color: AppColors.primary,
+    color: context.palette.primary,
     elevation: 6,
     shadowColor: Colors.black38,
     borderRadius: BorderRadius.circular(30),
@@ -1560,8 +1568,8 @@ class _DropPinBanner extends StatelessWidget {
           Flexible(
             child: Text(
               '📍 Tap anywhere on the map to set your ${target.label} point.',
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: context.palette.onAccent,
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
               ),
@@ -1571,8 +1579,8 @@ class _DropPinBanner extends StatelessWidget {
           TextButton(
             onPressed: onCancel,
             style: TextButton.styleFrom(
-              backgroundColor: Colors.white.withValues(alpha: 0.2),
-              foregroundColor: Colors.white,
+              backgroundColor: context.palette.onAccent.withValues(alpha: 0.2),
+              foregroundColor: context.palette.onAccent,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               minimumSize: const Size(0, 30),
               shape: const StadiumBorder(),
@@ -1622,7 +1630,7 @@ class _AnalysisPingState extends State<_AnalysisPing>
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: AppColors.primary.withValues(alpha: 1 - t),
+          color: context.palette.primary.withValues(alpha: 1 - t),
           width: 2,
         ),
       ),
@@ -1645,7 +1653,7 @@ class _AnalysisPingState extends State<_AnalysisPing>
               height: 16,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: AppColors.primary.withValues(alpha: 0.9),
+                color: context.palette.primary.withValues(alpha: 0.9),
               ),
             ),
           ],
@@ -1665,16 +1673,16 @@ class _AnalyzingPill extends StatelessWidget {
     decoration: BoxDecoration(
       color: Colors.white.withValues(alpha: 0.85),
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: AppColors.primary),
+      border: Border.all(color: context.palette.primary),
       boxShadow: [
         BoxShadow(
-          color: AppColors.primary.withValues(alpha: 0.35),
+          color: context.palette.primary.withValues(alpha: 0.35),
           blurRadius: 18,
           offset: const Offset(0, 4),
         ),
       ],
     ),
-    child: const Padding(
+    child: Padding(
       padding: EdgeInsets.fromLTRB(16, 10, 22, 10),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1683,14 +1691,14 @@ class _AnalyzingPill extends StatelessWidget {
             dimension: 14,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: AppColors.primary,
+              color: context.palette.primary,
             ),
           ),
           SizedBox(width: 10),
           Text(
             'Analyzing…',
             style: TextStyle(
-              color: AppColors.primary,
+              color: context.palette.primary,
               fontSize: 14,
               fontWeight: FontWeight.w700,
             ),

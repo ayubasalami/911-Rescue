@@ -46,7 +46,7 @@ Future<ui.Image> _renderLocationPinImage() async {
         fontSize: size,
         fontFamily: icon.fontFamily,
         package: icon.fontPackage,
-        color: AppColors.primary,
+        color: AppPalette.light.primary,
       ),
     )
     ..layout();
@@ -443,8 +443,7 @@ class MapAnnotationController {
     );
   }
 
-  Future<void> clearAnalysisRoute() async =>
-      _analysisRouteManager?.deleteAll();
+  Future<void> clearAnalysisRoute() async => _analysisRouteManager?.deleteAll();
 
   static const _routeGreen = Color(0xFF00AA55);
 
@@ -507,7 +506,7 @@ class MapAnnotationController {
               mapbox.Position(point.longitude, point.latitude),
           ],
         ),
-        lineColor: AppColors.boundary.toARGB32(),
+        lineColor: AppPalette.light.boundary.toARGB32(),
         lineWidth: 2,
       ),
     );

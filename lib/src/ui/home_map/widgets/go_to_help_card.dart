@@ -78,19 +78,21 @@ class GoToHelpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.backgroundSurface,
+      color: context.palette.backgroundSurface,
       borderRadius: BorderRadius.circular(AppRadii.md),
       elevation: 8,
       shadowColor: Colors.black26,
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppRadii.md),
-          border: Border.all(color: AppColors.primary, width: 2),
+          border: Border.all(color: context.palette.primary, width: 2),
         ),
         padding: const EdgeInsets.all(14),
         child: tracking
-            ? (expanded ? _buildTrackingExpanded() : _buildTrackingMinimized())
-            : (expanded ? _buildExpanded() : _buildMinimized()),
+            ? (expanded
+                  ? _buildTrackingExpanded(context)
+                  : _buildTrackingMinimized(context))
+            : (expanded ? _buildExpanded(context) : _buildMinimized(context)),
       ),
     );
   }
@@ -129,23 +131,23 @@ class GoToHelpCard extends StatelessWidget {
   /// matches the web platform, confirmed live: picking a category clears
   /// the route and hands off into a ping for that category, rather than
   /// re-routing by car.
-  Widget _buildSosConfirm() {
+  Widget _buildSosConfirm(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: AppColors.danger.withValues(alpha: 0.06),
+        color: context.palette.danger.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(AppRadii.md),
-        border: Border.all(color: AppColors.danger, width: 1.2),
+        border: Border.all(color: context.palette.danger, width: 1.2),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
+          Text(
             'Who do you need?',
             style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: AppColors.danger,
+              color: context.palette.danger,
               fontSize: 14,
             ),
           ),
@@ -160,9 +162,9 @@ class GoToHelpCard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     decoration: BoxDecoration(
-                      color: AppColors.backgroundSurface,
+                      color: context.palette.backgroundSurface,
                       borderRadius: BorderRadius.circular(AppRadii.sm),
-                      border: Border.all(color: AppColors.border),
+                      border: Border.all(color: context.palette.border),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -188,10 +190,13 @@ class GoToHelpCard extends StatelessWidget {
             }).toList(),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'This alerts responders and shares your location. The route '
             'will be cleared.',
-            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            style: TextStyle(
+              fontSize: 11,
+              color: context.palette.textSecondary,
+            ),
           ),
           const SizedBox(height: 8),
           SizedBox(
@@ -207,7 +212,7 @@ class GoToHelpCard extends StatelessWidget {
     );
   }
 
-  Widget _buildTrackingExpanded() {
+  Widget _buildTrackingExpanded(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -224,18 +229,18 @@ class GoToHelpCard extends StatelessWidget {
                       Container(
                         width: 6,
                         height: 6,
-                        decoration: const BoxDecoration(
-                          color: AppColors.primary,
+                        decoration: BoxDecoration(
+                          color: context.palette.primary,
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 6),
-                      const Text(
+                      Text(
                         'FOLLOWING YOU',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.primary,
+                          color: context.palette.primary,
                           letterSpacing: 0.5,
                         ),
                       ),
@@ -244,17 +249,17 @@ class GoToHelpCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     destination.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      color: context.palette.textPrimary,
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            _buildCollapseButton(),
+            _buildCollapseButton(context),
           ],
         ),
         const SizedBox(height: 8),
@@ -266,41 +271,42 @@ class GoToHelpCard extends StatelessWidget {
                   children: [
                     TextSpan(
                       text: route.formattedDistance,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
+                        color: context.palette.primary,
                       ),
                     ),
-                    const TextSpan(
+                    TextSpan(
                       text: ' to go',
                       style: TextStyle(
                         fontSize: 13,
-                        color: AppColors.textSecondary,
+                        color: context.palette.textSecondary,
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-            _buildArriveColumn(),
+            _buildArriveColumn(context),
           ],
         ),
         if (accuracyMeters != null) ...[
           const SizedBox(height: 2),
           Text(
             _gpsSignalLabel(accuracyMeters!),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              color: AppColors.textSecondary,
+              color: context.palette.textSecondary,
             ),
           ),
         ],
         const SizedBox(height: 8),
         const Divider(height: 1),
-        _buildStepList(),
+        _buildStepList(context),
         const SizedBox(height: 12),
         _buildActions(
+          context,
           primary: AppButton(
             label: 'Stop',
             variant: AppButtonVariant.plain,
@@ -317,7 +323,7 @@ class GoToHelpCard extends StatelessWidget {
   /// the navigating layouts, matching the web card. While tracking, [route]
   /// is re-fetched from the live position, so step 1 is always "what to do
   /// now".
-  Widget _buildStepList() {
+  Widget _buildStepList(BuildContext context) {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 150),
       child: ListView.separated(
@@ -337,14 +343,14 @@ class GoToHelpCard extends StatelessWidget {
                 height: 24,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: AppColors.backgroundCanvas,
+                  color: context.palette.backgroundCanvas,
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
                   '${index + 1}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
+                    color: context.palette.primary,
                     fontSize: 12,
                   ),
                 ),
@@ -356,17 +362,17 @@ class GoToHelpCard extends StatelessWidget {
                   children: [
                     Text(
                       step.instruction,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary,
+                        color: context.palette.textPrimary,
                       ),
                     ),
                     Text(
                       '${step.distanceMeters.round()} m',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: AppColors.textSecondary,
+                        color: context.palette.textSecondary,
                       ),
                     ),
                   ],
@@ -379,7 +385,7 @@ class GoToHelpCard extends StatelessWidget {
     );
   }
 
-  Widget _buildTrackingMinimized() {
+  Widget _buildTrackingMinimized(BuildContext context) {
     return InkWell(
       onTap: onToggleExpanded,
       borderRadius: BorderRadius.circular(AppRadii.md),
@@ -392,17 +398,17 @@ class GoToHelpCard extends StatelessWidget {
               children: [
                 Text(
                   route.formattedDistance,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
+                    color: context.palette.primary,
                   ),
                 ),
                 Text(
                   'arrive ${route.formattedArrival}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.textSecondary,
+                    color: context.palette.textSecondary,
                   ),
                 ),
               ],
@@ -417,7 +423,7 @@ class GoToHelpCard extends StatelessWidget {
               height: 44,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.danger,
+                color: context.palette.danger,
                 borderRadius: BorderRadius.circular(AppRadii.md),
               ),
               child: const Icon(Icons.call, color: Colors.white, size: 18),
@@ -432,13 +438,13 @@ class GoToHelpCard extends StatelessWidget {
               height: 44,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.backgroundCanvas,
+                color: context.palette.backgroundCanvas,
                 borderRadius: BorderRadius.circular(AppRadii.md),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.palette.border),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.expand_less,
-                color: AppColors.textSecondary,
+                color: context.palette.textSecondary,
                 size: 20,
               ),
             ),
@@ -448,7 +454,7 @@ class GoToHelpCard extends StatelessWidget {
     );
   }
 
-  Widget _buildExpanded() {
+  Widget _buildExpanded(BuildContext context) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -465,17 +471,17 @@ class GoToHelpCard extends StatelessWidget {
                       children: [
                         TextSpan(
                           text: route.formattedDuration,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
+                            color: context.palette.textPrimary,
                           ),
                         ),
                         TextSpan(
                           text: ' · ${route.formattedDistance}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
-                            color: AppColors.textSecondary,
+                            color: context.palette.textSecondary,
                           ),
                         ),
                       ],
@@ -484,8 +490,8 @@ class GoToHelpCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     destination.name,
-                    style: const TextStyle(
-                      color: AppColors.textPrimary,
+                    style: TextStyle(
+                      color: context.palette.textPrimary,
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
@@ -494,16 +500,17 @@ class GoToHelpCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            _buildArriveColumn(),
+            _buildArriveColumn(context),
             const SizedBox(width: 8),
-            _buildCollapseButton(),
+            _buildCollapseButton(context),
           ],
         ),
         const SizedBox(height: 10),
         const Divider(height: 1),
-        _buildStepList(),
+        _buildStepList(context),
         const SizedBox(height: 12),
         _buildActions(
+          context,
           primary: AppButton(
             label: 'Start',
             onPressed: onStart,
@@ -520,13 +527,13 @@ class GoToHelpCard extends StatelessWidget {
     vertical: 11,
   );
 
-  Widget _buildArriveColumn() {
+  Widget _buildArriveColumn(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        const Text(
+        Text(
           'Arrive',
-          style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+          style: TextStyle(fontSize: 10, color: context.palette.textSecondary),
         ),
         Text(
           route.formattedArrival,
@@ -536,7 +543,7 @@ class GoToHelpCard extends StatelessWidget {
     );
   }
 
-  Widget _buildCollapseButton() {
+  Widget _buildCollapseButton(BuildContext context) {
     return InkWell(
       onTap: onToggleExpanded,
       borderRadius: BorderRadius.circular(AppRadii.sm),
@@ -545,14 +552,14 @@ class GoToHelpCard extends StatelessWidget {
         height: 36,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: AppColors.backgroundCanvas,
+          color: context.palette.backgroundCanvas,
           borderRadius: BorderRadius.circular(AppRadii.sm),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.palette.border),
         ),
-        child: const Icon(
+        child: Icon(
           Icons.arrow_drop_down,
           size: 22,
-          color: AppColors.textSecondary,
+          color: context.palette.textSecondary,
         ),
       ),
     );
@@ -562,13 +569,13 @@ class GoToHelpCard extends StatelessWidget {
   /// side, then full-width Voice, Call 112 and Close. While "Send SOS
   /// instead" is confirming, its category picker replaces the first two
   /// rows — Call 112 and Close stay reachable throughout.
-  Widget _buildActions({required Widget primary}) {
+  Widget _buildActions(BuildContext context, {required Widget primary}) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (sosConfirming)
-          _buildSosConfirm()
+          _buildSosConfirm(context)
         else ...[
           Row(
             spacing: 8,
@@ -607,13 +614,13 @@ class GoToHelpCard extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         if (closeConfirming) ...[
-          const Text(
+          Text(
             'Stop routing and clear the map?',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
+              color: context.palette.textPrimary,
             ),
           ),
           const SizedBox(height: 8),
@@ -652,7 +659,7 @@ class GoToHelpCard extends StatelessWidget {
     );
   }
 
-  Widget _buildMinimized() {
+  Widget _buildMinimized(BuildContext context) {
     return InkWell(
       onTap: onToggleExpanded,
       borderRadius: BorderRadius.circular(AppRadii.md),
@@ -665,17 +672,17 @@ class GoToHelpCard extends StatelessWidget {
               children: [
                 Text(
                   route.formattedDuration,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
+                    color: context.palette.primary,
                   ),
                 ),
                 Text(
                   destination.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.textSecondary,
+                    color: context.palette.textSecondary,
                   ),
                 ),
               ],
@@ -690,7 +697,7 @@ class GoToHelpCard extends StatelessWidget {
               height: 44,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.danger,
+                color: context.palette.danger,
                 borderRadius: BorderRadius.circular(AppRadii.md),
               ),
               child: const Icon(Icons.call, color: Colors.white, size: 18),
@@ -705,13 +712,13 @@ class GoToHelpCard extends StatelessWidget {
               height: 44,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.backgroundCanvas,
+                color: context.palette.backgroundCanvas,
                 borderRadius: BorderRadius.circular(AppRadii.md),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.palette.border),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.expand_less,
-                color: AppColors.textSecondary,
+                color: context.palette.textSecondary,
                 size: 20,
               ),
             ),

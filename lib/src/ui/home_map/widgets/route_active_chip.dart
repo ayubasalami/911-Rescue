@@ -28,7 +28,7 @@ class RouteActiveChip extends StatelessWidget {
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 220),
       child: Material(
-        color: AppColors.backgroundSurface,
+        color: context.palette.backgroundSurface,
         borderRadius: BorderRadius.circular(AppRadii.md),
         elevation: 4,
         shadowColor: Colors.black26,
@@ -43,11 +43,11 @@ class RouteActiveChip extends StatelessWidget {
                 children: [
                   Text(mode.emoji, style: const TextStyle(fontSize: 13)),
                   const SizedBox(width: 4),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'Route active',
                       style: TextStyle(
-                        color: AppColors.primary,
+                        color: context.palette.primary,
                         fontWeight: FontWeight.w700,
                         fontSize: 12,
                       ),
@@ -56,10 +56,10 @@ class RouteActiveChip extends StatelessWidget {
                   InkWell(
                     onTap: onClose,
                     borderRadius: BorderRadius.circular(AppRadii.full),
-                    child: const Icon(
+                    child: Icon(
                       Icons.close,
                       size: 16,
-                      color: AppColors.textSecondary,
+                      color: context.palette.textSecondary,
                     ),
                   ),
                 ],
@@ -75,8 +75,8 @@ class RouteActiveChip extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 '${route.formattedDistance} away · ${route.formattedDuration}',
-                style: const TextStyle(
-                  color: AppColors.primary,
+                style: TextStyle(
+                  color: context.palette.primary,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -90,16 +90,16 @@ class RouteActiveChip extends StatelessWidget {
                     Icons.circle,
                     size: 6,
                     color: route.hasLiveTraffic
-                        ? AppColors.success
-                        : AppColors.textSecondary,
+                        ? context.palette.success
+                        : context.palette.textSecondary,
                   ),
                   const SizedBox(width: 4),
                   Text(
                     route.hasLiveTraffic
                         ? 'Live traffic applied'
                         : 'Estimated (no live traffic)',
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: context.palette.textSecondary,
                       fontSize: 11,
                     ),
                   ),

@@ -17,8 +17,9 @@ String _formatPopulation(int value) {
 }
 
 String _formatEta(Duration eta) {
-  if (eta.inHours >= 1)
+  if (eta.inHours >= 1) {
     return 'Est. ${eta.inHours} hr ${eta.inMinutes % 60} mins';
+  }
   return 'Est. ${eta.inMinutes} mins';
 }
 
@@ -61,8 +62,8 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
       expand: false,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: AppColors.backgroundSurface,
+          decoration: BoxDecoration(
+            color: context.palette.backgroundSurface,
             borderRadius: BorderRadius.vertical(
               top: Radius.circular(AppRadii.lg),
             ),
@@ -95,7 +96,7 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
                     child: _StatCard(
                       label: 'REACHABLE',
                       value: '${result.reachableCount}',
-                      color: AppColors.primary,
+                      color: context.palette.primary,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -105,7 +106,7 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
                       value: result.population == null
                           ? 'N/A'
                           : _formatPopulation(result.population!),
-                      color: AppColors.danger,
+                      color: context.palette.danger,
                     ),
                   ),
                 ],
@@ -115,22 +116,22 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
                 _ClosestFacilityCard(reachable: result.closest!),
               ],
               const SizedBox(height: 20),
-              const Text(
+              Text(
                 'FACILITIES IN RANGE (TAP TO VIEW)',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textSecondary,
+                  color: context.palette.textSecondary,
                   fontSize: 12,
                   letterSpacing: 0.5,
                 ),
               ),
               const SizedBox(height: 8),
               if (result.reachableCount == 0)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(vertical: 16),
                   child: Text(
                     'No facilities reachable within the time threshold.',
-                    style: TextStyle(color: AppColors.textSecondary),
+                    style: TextStyle(color: context.palette.textSecondary),
                   ),
                 ),
               for (final band in TimeBand.bands)
@@ -139,9 +140,9 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
                     padding: const EdgeInsets.only(top: 12, bottom: 6),
                     child: Text(
                       band.label.toUpperCase(),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
+                        color: context.palette.primary,
                         fontSize: 12,
                       ),
                     ),
@@ -189,7 +190,7 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.backgroundCanvas,
+        color: context.palette.backgroundCanvas,
         borderRadius: BorderRadius.circular(AppRadii.sm),
         border: Border(left: BorderSide(color: color, width: 3)),
       ),
@@ -198,9 +199,9 @@ class _StatCard extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              color: AppColors.textSecondary,
+              color: context.palette.textSecondary,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -226,20 +227,20 @@ class _ClosestFacilityCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.backgroundCanvas,
+        color: context.palette.backgroundCanvas,
         borderRadius: BorderRadius.circular(AppRadii.sm),
-        border: const Border(
-          left: BorderSide(color: AppColors.warning, width: 3),
+        border: Border(
+          left: BorderSide(color: context.palette.warning, width: 3),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'CLOSEST FACILITY (ROUTED)',
             style: TextStyle(
               fontSize: 11,
-              color: AppColors.textSecondary,
+              color: context.palette.textSecondary,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -250,8 +251,8 @@ class _ClosestFacilityCard extends StatelessWidget {
           ),
           Text(
             _formatEta(reachable.eta),
-            style: const TextStyle(
-              color: AppColors.textSecondary,
+            style: TextStyle(
+              color: context.palette.textSecondary,
               fontSize: 12,
             ),
           ),
@@ -281,10 +282,10 @@ class _FacilityRow extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: AppColors.backgroundCanvas,
+        color: context.palette.backgroundCanvas,
         borderRadius: BorderRadius.circular(AppRadii.sm),
-        border: const Border(
-          left: BorderSide(color: AppColors.success, width: 3),
+        border: Border(
+          left: BorderSide(color: context.palette.success, width: 3),
         ),
       ),
       child: InkWell(
@@ -305,8 +306,8 @@ class _FacilityRow extends StatelessWidget {
                   ),
                   Text(
                     entry.facility.category.displayLabel,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
+                    style: TextStyle(
+                      color: context.palette.textSecondary,
                       fontSize: 12,
                     ),
                   ),
@@ -316,16 +317,16 @@ class _FacilityRow extends StatelessWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.location_on,
                       size: 14,
-                      color: AppColors.textSecondary,
+                      color: context.palette.textSecondary,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       'Straight-line: ${entry.straightLineKm.toStringAsFixed(2)} km',
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: context.palette.textSecondary,
                         fontSize: 12,
                       ),
                     ),

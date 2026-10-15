@@ -17,7 +17,7 @@ class MapControlButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.backgroundSurface,
+      color: context.palette.backgroundSurface,
       borderRadius: _radius,
       child: InkWell(
         borderRadius: _radius,
@@ -28,7 +28,7 @@ class MapControlButton extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             borderRadius: _radius,
-            border: Border.all(color: const Color(0xFFDDDDDD)),
+            border: Border.all(color: context.palette.border),
           ),
           child: icon,
         ),

@@ -37,7 +37,7 @@ class GoToHelpModeBar extends StatelessWidget {
     }
 
     return Material(
-      color: AppColors.backgroundSurface,
+      color: context.palette.backgroundSurface,
       borderRadius: BorderRadius.circular(AppRadii.full),
       elevation: 4,
       shadowColor: Colors.black26,
@@ -90,7 +90,9 @@ class _PillModeChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primary : AppColors.backgroundCanvas,
+          color: selected
+              ? context.palette.primary
+              : context.palette.backgroundCanvas,
           borderRadius: BorderRadius.circular(AppRadii.full),
         ),
         child: Row(
@@ -103,7 +105,9 @@ class _PillModeChip extends StatelessWidget {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: selected ? Colors.white : AppColors.textPrimary,
+                color: selected
+                    ? context.palette.onAccent
+                    : context.palette.textPrimary,
               ),
             ),
           ],
@@ -133,9 +137,9 @@ class _CompactModeChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primary : AppColors.border,
+          color: selected ? context.palette.primary : context.palette.border,
           borderRadius: BorderRadius.circular(AppRadii.sm),
-          border: Border.all(color: AppColors.backgroundSurface),
+          border: Border.all(color: context.palette.backgroundSurface),
         ),
         child: Text(mode.emoji, style: const TextStyle(fontSize: 18)),
       ),

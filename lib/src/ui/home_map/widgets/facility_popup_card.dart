@@ -32,7 +32,7 @@ class FacilityPopupCard extends StatelessWidget {
     final crestAsset = facility.category.crestAsset;
 
     return Material(
-      color: AppColors.backgroundSurface,
+      color: context.palette.backgroundSurface,
       borderRadius: BorderRadius.circular(AppRadii.md),
       elevation: 8,
       shadowColor: Colors.black26,
@@ -88,20 +88,20 @@ class FacilityPopupCard extends StatelessWidget {
                     children: [
                       Text(
                         facility.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 15,
                           // Matches the web card's own facility-name color
                           // (confirmed live on 911rescueme.com) — this app
                           // was rendering it in the default near-black text
                           // color instead.
-                          color: AppColors.success,
+                          color: context.palette.success,
                         ),
                       ),
                       Text(
                         facility.categoryLabel.toUpperCase(),
-                        style: const TextStyle(
-                          color: AppColors.textSecondary,
+                        style: TextStyle(
+                          color: context.palette.textSecondary,
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0.5,
@@ -114,12 +114,12 @@ class FacilityPopupCard extends StatelessWidget {
                   InkWell(
                     onTap: onClose,
                     borderRadius: BorderRadius.circular(AppRadii.full),
-                    child: const Padding(
+                    child: Padding(
                       padding: EdgeInsets.all(4),
                       child: Icon(
                         Icons.close,
                         size: 18,
-                        color: AppColors.textSecondary,
+                        color: context.palette.textSecondary,
                       ),
                     ),
                   ),
@@ -130,17 +130,17 @@ class FacilityPopupCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.location_on,
                     size: 14,
-                    color: AppColors.textSecondary,
+                    color: context.palette.textSecondary,
                   ),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       address,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: context.palette.textSecondary,
                         fontSize: 12,
                       ),
                     ),
@@ -153,17 +153,17 @@ class FacilityPopupCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.phone,
                     size: 14,
-                    color: AppColors.textSecondary,
+                    color: context.palette.textSecondary,
                   ),
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
                       phone,
-                      style: const TextStyle(
-                        color: AppColors.textSecondary,
+                      style: TextStyle(
+                        color: context.palette.textSecondary,
                         fontSize: 12,
                       ),
                     ),

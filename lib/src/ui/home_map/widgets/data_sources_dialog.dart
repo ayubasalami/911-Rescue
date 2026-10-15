@@ -87,12 +87,12 @@ class DataSourcesDialog extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.only(right: 32),
                     child: Text(
                       'Data Sources & Attribution',
                       style: TextStyle(
-                        color: AppColors.primary,
+                        color: context.palette.primary,
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
@@ -111,8 +111,8 @@ class DataSourcesDialog extends StatelessWidget {
                             onTap: () => _open(context, source.url),
                             child: Text(
                               source.name,
-                              style: const TextStyle(
-                                color: AppColors.primary,
+                              style: TextStyle(
+                                color: context.palette.primary,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 13,
                                 height: 1.6,
@@ -121,8 +121,8 @@ class DataSourcesDialog extends StatelessWidget {
                           ),
                           Text(
                             source.desc,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
+                            style: TextStyle(
+                              color: context.palette.textSecondary,
                               fontSize: 13,
                               height: 1.6,
                             ),
@@ -139,7 +139,7 @@ class DataSourcesDialog extends StatelessWidget {
               child: IconButton(
                 tooltip: 'Close',
                 onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close, color: AppColors.textSecondary),
+                icon: Icon(Icons.close, color: context.palette.textSecondary),
               ),
             ),
           ],

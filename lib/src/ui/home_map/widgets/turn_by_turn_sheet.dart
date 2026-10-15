@@ -19,9 +19,11 @@ class TurnByTurnSheet extends StatelessWidget {
       expand: false,
       builder: (context, scrollController) {
         return Container(
-          decoration: const BoxDecoration(
-            color: AppColors.backgroundSurface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.lg)),
+          decoration: BoxDecoration(
+            color: context.palette.backgroundSurface,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(AppRadii.lg),
+            ),
           ),
           child: ListView.separated(
             controller: scrollController,
@@ -33,9 +35,18 @@ class TurnByTurnSheet extends StatelessWidget {
                 return Row(
                   children: [
                     const Expanded(
-                      child: Text('Turn-by-Turn Directions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        'Turn-by-Turn Directions',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
-                    InkWell(onTap: () => Navigator.of(context).pop(), child: const Icon(Icons.close)),
+                    InkWell(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: const Icon(Icons.close),
+                    ),
                   ],
                 );
               }
@@ -43,17 +54,29 @@ class TurnByTurnSheet extends StatelessWidget {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('$index.', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+                  Text(
+                    '$index.',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: context.palette.primary,
+                    ),
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(step.instruction, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(
+                          step.instruction,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                         const SizedBox(height: 2),
                         Text(
                           'Continue for ${step.distanceMeters.round()}m',
-                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                          style: TextStyle(
+                            color: context.palette.textSecondary,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
