@@ -786,19 +786,6 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     );
   }
 
-  Future<void> _getDirectionsTo(GeoPoint origin, GeoPoint destination) async {
-    final route = await _viewModel.fetchRoute(origin, destination);
-    if (route == null) return;
-    await _mapController.renderRoute(route.points);
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      barrierColor: Colors.black26,
-      builder: (_) => TurnByTurnSheet(steps: route.steps),
-    );
-  }
-
   /// Runs (or re-runs, on a mode change) the analysis for [origin]. Like
   /// the web, the map stays usable meanwhile: a pulsing ping marks the
   /// point and an "Analyzing…" pill shows at the top (both driven by
@@ -1577,16 +1564,26 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             Positioned.fill(
               child: AccessAnalysisSheet(
                 result: state!.activeAnalysis!,
+                categories: [
+                  for (final category in FacilityCategory.values)
+                    if (state.facilities.any((f) => f.category == category))
+                      category,
+                ],
+                selectedFilter: state.selectedFilter,
+                onFilterChanged: (filter) =>
+                    unawaited(_viewModel.filterAnalysis(filter)),
                 onMapRoute: (facility) {
                   _viewModel.dismissAnalysisSheet();
                   unawaited(_startGoToHelpToFacility(facility));
                 },
-                onDirections: (destination) async {
-                  final origin = await _viewModel.resolveRouteOrigin();
-                  if (origin != null) {
-                    await _getDirectionsTo(origin, destination);
-                  }
-                },
+                onViewInfo: (facility) => showFacilityInfoDialog(
+                  context,
+                  facility: facility,
+                  onGetDirections: () {
+                    _viewModel.dismissAnalysisSheet();
+                    _openPlannerTo(facility);
+                  },
+                ),
                 onClose: _viewModel.dismissAnalysisSheet,
               ),
             ),

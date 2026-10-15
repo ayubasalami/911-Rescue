@@ -45,11 +45,16 @@ class AccessAnalysisRepository {
     required GeoPoint origin,
     required TransportMode mode,
     int thresholdMinutes = kAccessAnalysisThresholdMinutes,
+    FacilityCategory? category,
   }) async {
     final List<Facility> allFacilities;
     switch (await _facilityRepository.allFacilities()) {
       case Ok(:final value):
-        allFacilities = value;
+        // The web analyses only the facility type the map is filtered to.
+        allFacilities = [
+          for (final facility in value)
+            if (category == null || facility.category == category) facility,
+        ];
       case Err(:final failure):
         return Err(failure);
     }

@@ -563,6 +563,17 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   void selectFilter(FacilityCategory? filter) =>
       _update((s) => s.copyWith(selectedFilter: filter));
 
+  /// The analysis panel's "Facility type" pills — the same filter as the
+  /// map's, and the analysis re-runs for that type at the same point, as
+  /// on the web.
+  Future<void> filterAnalysis(FacilityCategory? filter) async {
+    selectFilter(filter);
+    final current = state.value;
+    final origin = current?.activeAnalysisOrigin;
+    if (origin == null) return;
+    await runAnalysis(origin, followsUser: current!.activeAnalysisFollowsUser);
+  }
+
   /// Just switches the selected transport mode — used by the origin popup's
   /// mode picker before an analysis has been run. See [changeCommuteMode]
   /// for switching mode while an analysis is already active.
@@ -812,6 +823,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
           thresholdMinutes:
               state.value?.analysisThresholdMinutes ??
               kAccessAnalysisThresholdMinutes,
+          category: state.value?.selectedFilter,
         )) {
       case Ok(:final value):
         result = value;

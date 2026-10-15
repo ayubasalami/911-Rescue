@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
-import '../../../data/models/geo_point.dart';
 import '../../core/widgets/app_button.dart';
 
 String _formatPopulation(int value) {
@@ -31,18 +30,31 @@ class AccessAnalysisSheet extends StatefulWidget {
   const AccessAnalysisSheet({
     super.key,
     required this.result,
+    required this.categories,
+    required this.selectedFilter,
+    required this.onFilterChanged,
     required this.onMapRoute,
-    required this.onDirections,
+    required this.onViewInfo,
     required this.onClose,
   });
 
   final AccessAnalysisResult result;
 
+  /// The facility types on the map, for the web's "Facility type" pills.
+  final List<FacilityCategory> categories;
+
+  /// The map's category filter (null = All) — picking a pill changes it and
+  /// re-runs the analysis for that type.
+  final FacilityCategory? selectedFilter;
+  final ValueChanged<FacilityCategory?> onFilterChanged;
+
   /// Takes the whole [Facility], not just its point — the caller routes
   /// this into the same Go to Help card used elsewhere, which needs the
   /// facility's name/category to display.
   final void Function(Facility facility) onMapRoute;
-  final void Function(GeoPoint destination) onDirections;
+
+  /// The web's "View Info": the facility info dialog.
+  final void Function(Facility facility) onViewInfo;
   final VoidCallback onClose;
 
   @override
@@ -89,6 +101,36 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
                   ),
                 ],
               ),
+              if (widget.categories.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Text(
+                  'FACILITY TYPE',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: context.palette.textSecondary,
+                    fontSize: 11,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _TypePill(
+                      label: 'All',
+                      selected: widget.selectedFilter == null,
+                      onTap: () => widget.onFilterChanged(null),
+                    ),
+                    for (final category in widget.categories)
+                      _TypePill(
+                        label: category.displayLabel,
+                        selected: widget.selectedFilter == category,
+                        onTap: () => widget.onFilterChanged(category),
+                      ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -134,18 +176,15 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
                     style: TextStyle(color: context.palette.textSecondary),
                   ),
                 ),
-              for (final band in TimeBand.bands)
+              for (final (index, band) in TimeBand.bands.indexed)
                 if (result.byBand[band]?.isNotEmpty ?? false) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12, bottom: 6),
-                    child: Text(
-                      band.label.toUpperCase(),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: context.palette.primary,
-                        fontSize: 12,
-                      ),
-                    ),
+                  _BandHeading(
+                    // The web: "Within 5 mins" for the first band, then
+                    // "5 - 10 mins", "10 - 15 mins"…
+                    label: index == 0
+                        ? 'Within ${band.maxMinutes} mins'
+                        : '${TimeBand.bands[index - 1].maxMinutes} - '
+                              '${band.maxMinutes} mins',
                   ),
                   for (final entry in result.byBand[band]!)
                     _FacilityRow(
@@ -158,18 +197,89 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
                             : entry.facility.id,
                       ),
                       onMapRoute: () => widget.onMapRoute(entry.facility),
-                      onDirections: () => widget.onDirections(
-                        GeoPoint(
-                          latitude: entry.facility.latitude,
-                          longitude: entry.facility.longitude,
-                        ),
-                      ),
+                      onViewInfo: () => widget.onViewInfo(entry.facility),
                     ),
                 ],
             ],
           ),
         );
       },
+    );
+  }
+}
+
+/// The web's `commute-pill` used for the "Facility type" filter.
+class _TypePill extends StatelessWidget {
+  const _TypePill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final shape = StadiumBorder(
+      side: BorderSide(
+        color: selected ? context.palette.primary : context.palette.border,
+      ),
+    );
+    return Material(
+      color: selected ? context.palette.primary : context.palette.inputBg,
+      shape: shape,
+      child: InkWell(
+        customBorder: shape,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: selected
+                  ? context.palette.onAccent
+                  : context.palette.textPrimary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A time band's heading: the web's blue-tinted strip with a clock.
+class _BandHeading extends StatelessWidget {
+  const _BandHeading({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 14, bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: context.palette.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        spacing: 6,
+        children: [
+          Icon(Icons.schedule, size: 13, color: context.palette.primary),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: context.palette.primary,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -268,14 +378,14 @@ class _FacilityRow extends StatelessWidget {
     required this.expanded,
     required this.onTap,
     required this.onMapRoute,
-    required this.onDirections,
+    required this.onViewInfo,
   });
 
   final ReachableFacility entry;
   final bool expanded;
   final VoidCallback onTap;
   final VoidCallback onMapRoute;
-  final VoidCallback onDirections;
+  final VoidCallback onViewInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -305,7 +415,7 @@ class _FacilityRow extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    entry.facility.category.displayLabel,
+                    entry.facility.rawCategory ?? entry.facility.categoryLabel,
                     style: TextStyle(
                       color: context.palette.textSecondary,
                       fontSize: 12,
@@ -345,8 +455,8 @@ class _FacilityRow extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: AppButton(
-                        label: 'Directions',
-                        onPressed: onDirections,
+                        label: 'View Info',
+                        onPressed: onViewInfo,
                         filled: false,
                       ),
                     ),
