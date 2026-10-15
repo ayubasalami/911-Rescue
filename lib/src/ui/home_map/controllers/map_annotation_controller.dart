@@ -9,6 +9,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
+import '../../../data/models/ping.dart';
 import '../../../utils/route_progress.dart';
 import '../../core/widgets/facility_category_glyph.dart';
 import '../widgets/map_legend.dart';
@@ -154,6 +155,80 @@ Future<ui.Image> _renderHeadingDotImage() async {
   );
 }
 
+/// The web's `.responder-dot` and name label: a 16 px accent dot with a
+/// white ring centred in the image, the pill underneath.
+Future<ui.Image> _renderResponderImage(String name, Color color) async {
+  final label = TextPainter(
+    textDirection: TextDirection.ltr,
+    maxLines: 1,
+    ellipsis: '…',
+    text: TextSpan(
+      text: name,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 10,
+        fontWeight: FontWeight.w800,
+      ),
+    ),
+  )..layout(maxWidth: 160);
+  final width = math.max(40.0, label.width + 20);
+  const height = 68.0;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)..scale(_markerScale);
+  final centre = Offset(width / 2, height / 2);
+
+  canvas
+    ..drawCircle(
+      centre,
+      9,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.4)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    )
+    ..drawCircle(centre, 8, Paint()..color = Colors.white)
+    ..drawCircle(centre, 5.5, Paint()..color = color);
+
+  final pill = RRect.fromRectAndRadius(
+    Rect.fromCenter(
+      center: Offset(centre.dx, centre.dy + 14 + (label.height + 4) / 2),
+      width: label.width + 14,
+      height: label.height + 4,
+    ),
+    const Radius.circular(10),
+  );
+  canvas
+    ..drawRRect(
+      pill.shift(const Offset(0, 1)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.35)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
+    )
+    ..drawRRect(pill, Paint()..color = color);
+  label.paint(canvas, Offset(centre.dx - label.width / 2, pill.top + 2));
+
+  final picture = recorder.endRecording();
+  return picture.toImage(
+    (width * _markerScale).toInt(),
+    (height * _markerScale).toInt(),
+  );
+}
+
+/// A circle of [radiusMeters] around [centre] as a polygon ring — the
+/// responder's GPS accuracy.
+List<mapbox.Position> _circleRing(GeoPoint centre, double radiusMeters) {
+  const steps = 48;
+  final latRadius = radiusMeters / 111320;
+  final lngRadius =
+      radiusMeters / (111320 * math.cos(centre.latitude * math.pi / 180));
+  return [
+    for (var i = 0; i <= steps; i++)
+      mapbox.Position(
+        centre.longitude + lngRadius * math.cos(2 * math.pi * i / steps),
+        centre.latitude + latRadius * math.sin(2 * math.pi * i / steps),
+      ),
+  ];
+}
+
 /// Blends [target] into [previous] by [weight] on the circle — the web's
 /// heading smoothing, so a jittery GPS heading doesn't swing the map.
 double _blendBearing(double? previous, double target, [double weight = 0.25]) {
@@ -221,6 +296,16 @@ class MapAnnotationController {
   /// boundary is static and toggled independently; sharing a manager would
   /// mean every route change wipes the boundary outline too.
   mapbox.PolylineAnnotationManager? _boundaryManager;
+
+  /// An accepted ping's responder: their road route to the user (solid) or,
+  /// until one comes back, a dashed straight line; their GPS accuracy; and
+  /// the named dot.
+  mapbox.PolylineAnnotationManager? _responderRouteManager;
+  mapbox.PolylineAnnotationManager? _responderLineManager;
+  mapbox.PolygonAnnotationManager? _responderAccuracyManager;
+  mapbox.PointAnnotationManager? _responderManager;
+  ResponderTrack? _responderTrack;
+  Future<void> _responderSync = Future.value();
 
   /// The tracked "You are here" marker — on top of everything, and in place
   /// of the location puck while following a route.
@@ -365,6 +450,21 @@ class MapAnnotationController {
     await boundaryManager.setLineDasharray([5 / 3, 10 / 3]);
     _boundaryManager = boundaryManager;
 
+    _responderAccuracyManager = await mapboxMap.annotations
+        .createPolygonAnnotationManager();
+    _responderRouteManager = await mapboxMap.annotations
+        .createPolylineAnnotationManager();
+    final responderLineManager = await mapboxMap.annotations
+        .createPolylineAnnotationManager();
+    // The web's `dashArray: 6,6` at weight 2.
+    await responderLineManager.setLineDasharray([3, 3]);
+    _responderLineManager = responderLineManager;
+    final responderManager = await mapboxMap.annotations
+        .createPointAnnotationManager();
+    await responderManager.setIconAllowOverlap(true);
+    await responderManager.setIconIgnorePlacement(true);
+    _responderManager = responderManager;
+
     final headingManager = await mapboxMap.annotations
         .createPointAnnotationManager();
     // The cone turns with the map, so its rotation is a compass bearing.
@@ -438,6 +538,10 @@ class MapAnnotationController {
   Future<void> _redrawAll() async {
     _registeredStyleImages.clear();
     await _updateLocationPuck();
+
+    final responder = _responderTrack;
+    _responderTrack = null;
+    if (responder != null) await syncResponder(responder);
 
     final headingPoint = _headingPoint;
     final headingDegrees = _headingDegrees;
@@ -571,6 +675,90 @@ class MapAnnotationController {
         ),
       );
     }
+  }
+
+  /// Draws (or, with null, clears) an accepted ping's responder, as the web
+  /// does on each status poll.
+  Future<void> syncResponder(ResponderTrack? track) {
+    if (identical(track, _responderTrack)) return _responderSync;
+    _responderTrack = track;
+    return _responderSync = _responderSync.then((_) => _applyResponder(track));
+  }
+
+  Future<void> _applyResponder(ResponderTrack? track) async {
+    final marker = _responderManager;
+    final accuracy = _responderAccuracyManager;
+    final routeManager = _responderRouteManager;
+    final lineManager = _responderLineManager;
+    if (marker == null ||
+        accuracy == null ||
+        routeManager == null ||
+        lineManager == null) {
+      return;
+    }
+    await marker.deleteAll();
+    await accuracy.deleteAll();
+    await routeManager.deleteAll();
+    await lineManager.deleteAll();
+    if (track == null) return;
+
+    mapbox.LineString line(List<GeoPoint> points) => mapbox.LineString(
+      coordinates: [
+        for (final point in points)
+          mapbox.Position(point.longitude, point.latitude),
+      ],
+    );
+
+    final route = track.route;
+    if (route != null && route.length >= 2) {
+      await routeManager.create(
+        mapbox.PolylineAnnotationOptions(
+          geometry: line(route),
+          lineColor: _palette.primary.toARGB32(),
+          lineWidth: 4,
+          lineOpacity: 0.85,
+        ),
+      );
+    } else {
+      await lineManager.create(
+        mapbox.PolylineAnnotationOptions(
+          geometry: line([track.user, track.position]),
+          lineColor: _palette.primary.toARGB32(),
+          lineWidth: 2,
+          lineOpacity: 0.6,
+        ),
+      );
+    }
+
+    final meters = track.accuracyMeters;
+    if (meters != null && meters > 25) {
+      await accuracy.create(
+        mapbox.PolygonAnnotationOptions(
+          geometry: mapbox.Polygon(
+            coordinates: [_circleRing(track.position, meters)],
+          ),
+          fillColor: _palette.primary.toARGB32(),
+          fillOpacity: 0.08,
+          fillOutlineColor: _palette.primary.withValues(alpha: 0.5).toARGB32(),
+        ),
+      );
+    }
+
+    // One image per name and colour, so a theme switch or another
+    // responder gets its own.
+    final imageId =
+        'responder-${track.name.hashCode}-${_palette.primary.toARGB32()}';
+    await _ensureStyleImage(
+      imageId,
+      () => _renderResponderImage(track.name, _palette.primary),
+      scale: _markerScale,
+    );
+    await marker.create(
+      mapbox.PointAnnotationOptions(
+        geometry: mapboxPointFrom(track.position),
+        iconImage: imageId,
+      ),
+    );
   }
 
   /// Turns the map so [heading] points up — smoothed, and only once it's

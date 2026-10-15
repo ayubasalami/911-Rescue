@@ -10,15 +10,18 @@ import '../../../core/analytics_events.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../data/models/access_analysis.dart';
 import '../../../data/models/emergency_profile.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
 import '../../../data/models/ping.dart';
 import '../../../data/repositories/active_ping_repository.dart';
 import '../../../data/repositories/location_repository.dart';
+import '../../../data/services/access_analysis_service.dart';
 import '../../../data/services/analytics_service.dart';
 import '../../../data/services/geocoding_service.dart';
 import '../../../data/services/ping_service.dart';
+import '../../../utils/route_progress.dart';
 import '../../core/widgets/app_button.dart';
 import '../view_model/emergency_profile_view_model.dart';
 import 'emergency_profile_sheet.dart';
@@ -95,6 +98,7 @@ class GetHelpSheet extends ConsumerStatefulWidget {
     this.isPinnedLocation = false,
     this.origin,
     this.onPingActiveChanged,
+    this.onResponderTrack,
     this.onGoToHelp,
     this.initialPingCategory,
   });
@@ -121,6 +125,10 @@ class GetHelpSheet extends ConsumerStatefulWidget {
   /// show a pulse animation at the origin point independent of wherever
   /// this card itself is displayed.
   final ValueChanged<bool>? onPingActiveChanged;
+
+  /// The accepted responder's position and road route, for the map to draw
+  /// — null when there's no responder sharing a position (or no ping).
+  final ValueChanged<ResponderTrack?>? onResponderTrack;
 
   /// Tapping a category under "Go to Help" — routing to the nearest
   /// facility needs the full facility list and the map's route renderer,
@@ -152,6 +160,15 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
   bool _isRecording = false;
   bool _voiceSent = false;
   bool _voiceUploading = false;
+
+  /// The responder's road route to the ping, for the map and "Arrives in
+  /// ~N min" — re-fetched, as on the web, only when they've moved more than
+  /// 60 m since or changed travel mode.
+  DirectionsRoute? _responderRoute;
+  GeoPoint? _responderRouteFrom;
+  TransportMode? _responderRouteMode;
+  bool _fetchingResponderRoute = false;
+  String? _agency;
 
   /// What the backend heard, shown under "✓ Voice description sent".
   String? _voiceTranscript;
@@ -241,6 +258,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     _pollTimer?.cancel();
     _addressController.dispose();
     if (_pingCategory != null) widget.onPingActiveChanged?.call(false);
+    widget.onResponderTrack?.call(null);
     super.dispose();
   }
 
@@ -259,6 +277,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       _status = null;
       _responder = null;
       _voiceSent = false;
+      _clearResponderRoute();
     });
     _beginPing(category, widget.origin);
   }
@@ -404,7 +423,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
         setState(() {
           _status = value.incident.status;
           _responder = value.responder;
+          _agency = value.incident.agency;
         });
+        unawaited(_trackResponder(value));
         if (value.incident.status.isClosed) {
           _pollTimer?.cancel();
           _pollTimer = null;
@@ -414,6 +435,62 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
         // Transient — keep polling, the next tick may succeed.
         break;
     }
+  }
+
+  void _clearResponderRoute() {
+    _responderRoute = null;
+    _responderRouteFrom = null;
+    _responderRouteMode = null;
+  }
+
+  /// Hands the map the responder's position and road route, as the web
+  /// does on every status poll.
+  Future<void> _trackResponder(PingTrackingInfo info) async {
+    final responder = info.responder;
+    final position = responder?.lastPoint;
+    if (responder == null ||
+        position == null ||
+        info.incident.status.isClosed) {
+      widget.onResponderTrack?.call(null);
+      return;
+    }
+    final mode = TransportMode.values.firstWhere(
+      (mode) => mode.backendMode == info.incident.responderMode,
+      orElse: () => TransportMode.driving,
+    );
+    final from = _responderRouteFrom;
+    final stale =
+        mode != _responderRouteMode ||
+        from == null ||
+        haversineMeters(from, position) > 60;
+    if (stale && !_fetchingResponderRoute) {
+      _fetchingResponderRoute = true;
+      final result = await ref
+          .read(accessAnalysisServiceProvider)
+          .fetchRoute(
+            origin: position,
+            destination: info.incident.userPoint,
+            mode: mode,
+          );
+      _fetchingResponderRoute = false;
+      if (!mounted) return;
+      if (result case Ok(:final value)) {
+        setState(() {
+          _responderRoute = value;
+          _responderRouteFrom = position;
+          _responderRouteMode = mode;
+        });
+      }
+    }
+    widget.onResponderTrack?.call(
+      ResponderTrack(
+        position: position,
+        name: responder.fullName,
+        user: info.incident.userPoint,
+        accuracyMeters: responder.lastAccuracy,
+        route: _responderRoute?.points,
+      ),
+    );
   }
 
   void _startEditingAddress() {
@@ -455,6 +532,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     _pollTimer = null;
     final publicId = _publicId;
     widget.onPingActiveChanged?.call(false);
+    widget.onResponderTrack?.call(null);
     setState(() {
       _pingCategory = null;
       _mode = null;
@@ -469,6 +547,7 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       _respondersAvailable = 0;
       _status = null;
       _responder = null;
+      _clearResponderRoute();
     });
     if (publicId != null) {
       ref
@@ -830,15 +909,120 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
       default:
         break;
     }
-    final responder = _responder;
-    if (responder != null) {
-      final station = responder.stationName;
-      final phone = responder.phone;
-      return '${responder.fullName}${station != null ? ' · $station' : ''} '
-          'is responding.${phone != null ? ' Call $phone if needed.' : ''}';
-    }
+    // An accepted responder gets the web's own block instead.
+    if (_responder != null) return '';
     return 'Your location has been sent to nearby ${category.agencyLabel} on duty. '
         'If nobody answers shortly, call 112.';
+  }
+
+  /// The web's responder block: name, agency and station, phone, the
+  /// "Arrives in" box from their road route, and whether their position is
+  /// being shared.
+  Widget _buildResponder(PingResponder responder) {
+    final muted = TextStyle(
+      fontSize: 12,
+      height: 1.6,
+      color: context.palette.textSecondary,
+    );
+    final route = _responderRoute;
+    final phone = responder.phone;
+    final station = responder.stationName;
+    final kilometres = route == null
+        ? ''
+        : (route.distanceMeters / 1000).toStringAsFixed(1);
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: context.palette.border)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            responder.fullName,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+          ),
+          Text([?_agency, ?station].join(' · '), style: muted),
+          if (phone != null)
+            InkWell(
+              onTap: () => launchUrl(Uri(scheme: 'tel', path: phone)),
+              child: Text.rich(
+                TextSpan(
+                  text: '📞 ',
+                  style: muted,
+                  children: [
+                    TextSpan(
+                      text: phone,
+                      style: TextStyle(color: context.palette.primary),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (route != null && responder.lastPoint != null)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+              decoration: BoxDecoration(
+                color: context.palette.accentGreen.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: context.palette.accentGreen),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      text: 'Arrives in ~${_formatEta(route.durationSeconds)}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: context.palette.accentGreen,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: ' · $kilometres km by road',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                            color: context.palette.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!route.hasLiveTraffic)
+                    Text(
+                      'Estimated without live traffic',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: context.palette.textSecondary,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          if (responder.lastPoint == null)
+            Text('Position not being shared right now', style: muted)
+          else
+            Text(
+              '● Live position shared',
+              style: muted.copyWith(color: context.palette.accentGreen),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// The web's duration format: "7 min", "1 hr", "1 hr 20 min".
+  static String _formatEta(double seconds) {
+    final minutes = (seconds / 60).round().clamp(1, 1 << 30);
+    if (minutes < 60) return '$minutes min';
+    final hours = minutes ~/ 60;
+    final rest = minutes % 60;
+    return rest == 0 ? '$hours hr' : '$hours hr $rest min';
   }
 
   Widget _buildPingPendingView(BuildContext context) {
@@ -880,11 +1064,14 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        Text(
-          _statusBody(category),
-          style: TextStyle(fontSize: 13, color: context.palette.textPrimary),
-        ),
+        if (_statusBody(category) case final body when body.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            body,
+            style: TextStyle(fontSize: 13, color: context.palette.textPrimary),
+          ),
+        ],
+        if (_responder case final responder?) _buildResponder(responder),
         if (_pingError != null) ...[
           const SizedBox(height: 8),
           SizedBox(
@@ -1103,7 +1290,8 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Tap for details',
+                  // The web: who's coming, once someone has accepted.
+                  _responder?.fullName ?? 'Tap for details',
                   style: TextStyle(
                     fontSize: 12,
                     color: context.palette.textSecondary,

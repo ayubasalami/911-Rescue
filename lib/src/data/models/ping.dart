@@ -155,3 +155,27 @@ class VoiceUploadResult {
   /// the recording is still attached to the incident either way.
   final bool transcribed;
 }
+
+/// What the map shows of an accepted ping's responder: where they are, how
+/// sure that fix is, and their road route to the person who pinged — the
+/// web's responder dot, accuracy circle and blue line.
+class ResponderTrack {
+  const ResponderTrack({
+    required this.position,
+    required this.name,
+    required this.user,
+    this.accuracyMeters,
+    this.route,
+  });
+
+  final GeoPoint position;
+  final String name;
+
+  /// The ping's own location, where the route ends.
+  final GeoPoint user;
+  final double? accuracyMeters;
+
+  /// The road route from [position] to [user]; null draws a dashed
+  /// straight line instead, as on the web.
+  final List<GeoPoint>? route;
+}

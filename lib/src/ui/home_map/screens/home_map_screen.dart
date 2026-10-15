@@ -15,6 +15,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/access_analysis.dart';
 import '../../../data/models/facility.dart';
 import '../../../data/models/geo_point.dart';
+import '../../../data/models/ping.dart';
 import '../../../data/models/route_point.dart';
 import '../../../data/models/triage.dart';
 import '../../../data/services/analytics_service.dart';
@@ -420,6 +421,27 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     } else {
       unawaited(_mapController.resetNorth());
     }
+  }
+
+  /// Whether the map has been fitted to the responder and the user yet —
+  /// once, when the responder first appears, as on the web.
+  bool _responderFitted = false;
+
+  void _showResponder(ResponderTrack? track) {
+    unawaited(_mapController.syncResponder(track));
+    if (track == null) {
+      _responderFitted = false;
+      return;
+    }
+    if (_responderFitted) return;
+    _responderFitted = true;
+    unawaited(
+      _mapController.flyToBounds(
+        [track.user, track.position],
+        padding: 70,
+        maxZoom: 16,
+      ),
+    );
   }
 
   /// Stop following: back to the static preview, with the whole line drawn
@@ -1384,6 +1406,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                         origin: state.originSelection!.point,
                         onPingActiveChanged: (active) =>
                             _pingActive.value = active,
+                        onResponderTrack: _showResponder,
                         onGoToHelp: _startGoToHelp,
                         initialPingCategory: _pendingSosCategory,
                       ),
