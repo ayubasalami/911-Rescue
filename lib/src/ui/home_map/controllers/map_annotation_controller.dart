@@ -32,8 +32,9 @@ Future<ui.Image> _renderCategoryMarkerImage(FacilityCategory category) async {
 
 /// Rasterizes a map-pin glyph, used both for a dropped pin (bottom-anchored
 /// via [PointAnnotationOptions.iconAnchor]) and for the native GPS location
-/// puck. Same [ui.Image]-returning convention as [_renderCategoryMarkerImage].
-Future<ui.Image> _renderLocationPinImage() async {
+/// puck, in [color]. Same [ui.Image]-returning convention as
+/// [_renderCategoryMarkerImage].
+Future<ui.Image> _renderLocationPinImage(Color color) async {
   const size = 96.0;
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder, const Rect.fromLTWH(0, 0, size, size));
@@ -46,7 +47,7 @@ Future<ui.Image> _renderLocationPinImage() async {
         fontSize: size,
         fontFamily: icon.fontFamily,
         package: icon.fontPackage,
-        color: AppPalette.light.primary,
+        color: color,
       ),
     )
     ..layout();
@@ -145,8 +146,30 @@ class MapAnnotationController {
         () => _renderCategoryMarkerImage(category),
       );
 
-  Future<void> _ensurePinDropImage() =>
-      _ensureStyleImage(_pinDropImageId, _renderLocationPinImage);
+  Future<void> _ensurePinDropImage() => _ensureStyleImage(
+    _pinDropImageId,
+    () => _renderLocationPinImage(_palette.primary),
+  );
+
+  /// The web swaps CARTO's voyager and dark_all tiles; these are the
+  /// closest Mapbox styles.
+  static String styleUriFor({required bool dark}) =>
+      dark ? mapbox.MapboxStyles.DARK : mapbox.MapboxStyles.MAPBOX_STREETS;
+
+  /// Route and pin colours for the current theme.
+  AppPalette _palette = AppPalette.light;
+
+  /// Whether the loaded style is the dark one, and whether it should be.
+  bool _styleDark = false;
+  bool _wantDark = false;
+  bool _restyling = false;
+
+  /// What's drawn, kept so a style switch — which wipes the map's images
+  /// and layers — can draw it all again.
+  List<IsochroneRing>? _lastRings;
+  TransportMode? _lastRingsMode;
+  List<GeoPoint>? _lastRoute;
+  List<GeoPoint>? _lastAnalysisRoute;
 
   GeoPoint? _lastDroppedPin;
 
@@ -158,11 +181,14 @@ class MapAnnotationController {
   Facility? facilityForAnnotation(String annotationId) =>
       _annotationFacilities[annotationId];
 
+  /// [dark] is the style the map was created with ([styleUriFor]).
   Future<void> onMapCreated(
     mapbox.MapboxMap mapboxMap, {
+    required bool dark,
     required void Function(mapbox.PointAnnotation) onFacilityTap,
   }) async {
     _map = mapboxMap;
+    _styleDark = dark;
     _polygonManager = await mapboxMap.annotations
         .createPolygonAnnotationManager();
 
@@ -186,7 +212,15 @@ class MapAnnotationController {
     _boundaryManager = await mapboxMap.annotations
         .createPolylineAnnotationManager();
 
-    await mapboxMap.location.updateSettings(
+    await _updateLocationPuck();
+    // The theme may have changed while the map was being created.
+    await _applyTheme();
+  }
+
+  Future<void> _updateLocationPuck() async {
+    final map = _map;
+    if (map == null) return;
+    await map.location.updateSettings(
       mapbox.LocationComponentSettings(
         enabled: true,
         puckBearingEnabled: false,
@@ -196,11 +230,83 @@ class MapAnnotationController {
             // annotations — it decodes an encoded image directly rather
             // than looking one up via addStyleImage, so this one still
             // wants PNG bytes, not a registered style image.
-            topImage: await _pngBytes(await _renderLocationPinImage()),
+            topImage: await _pngBytes(
+              await _renderLocationPinImage(_palette.primary),
+            ),
           ),
         ),
       ),
     );
+  }
+
+  /// Switches the map to [palette]'s theme: the dark or light style, and
+  /// the web's route and pin colours for it. Safe to call on every build.
+  Future<void> setTheme(AppPalette palette, {required bool dark}) async {
+    _wantDark = dark;
+    if (_map == null) {
+      _palette = palette;
+      _styleDark = dark;
+      return;
+    }
+    if (_styleDark == dark) return;
+    _palette = palette;
+    await _applyTheme();
+  }
+
+  /// Loads the wanted style, then draws everything again — a style load
+  /// drops the registered marker images, the traffic layer and (on some
+  /// SDK versions) the annotations. Loops so a toggle made mid-load still
+  /// lands on the right style.
+  Future<void> _applyTheme() async {
+    final map = _map;
+    if (map == null || _restyling) return;
+    _restyling = true;
+    try {
+      while (_styleDark != _wantDark) {
+        _styleDark = _wantDark;
+        await map.loadStyleURI(styleUriFor(dark: _styleDark));
+        await _redrawAll();
+      }
+    } finally {
+      _restyling = false;
+    }
+  }
+
+  Future<void> _redrawAll() async {
+    _registeredStyleImages.clear();
+    await _updateLocationPuck();
+
+    final facilities = _lastSourceFacilities;
+    _lastSourceFacilities = const [];
+    await syncFacilityPins(facilities, _lastAppliedFilter, force: true);
+
+    final pin = _lastDroppedPin;
+    _lastDroppedPin = null;
+    await _originManager?.deleteAll();
+    if (pin != null) await syncDroppedPin(pin);
+
+    final boundary = _lastBoundary;
+    _lastBoundary = null;
+    await _boundaryManager?.deleteAll();
+    if (boundary != null) await syncBoundary(boundary);
+
+    final traffic = _lastTrafficVisible;
+    _trafficLayerAdded = false;
+    _lastTrafficVisible = null;
+    if (traffic ?? false) await setTrafficVisible(true);
+
+    final rings = _lastRings;
+    final mode = _lastRingsMode;
+    await _polygonManager?.deleteAll();
+    if (rings != null && mode != null) await renderIsochrone(rings, mode);
+
+    final route = _lastRoute;
+    await _polylineManager?.deleteAll();
+    if (route != null) await renderRoute(route);
+
+    final analysisRoute = _lastAnalysisRoute;
+    await _analysisRouteManager?.deleteAll();
+    if (analysisRoute != null) await renderAnalysisRoute(analysisRoute);
   }
 
   /// [shiftDown] lands [point] that many pixels below screen center instead
@@ -271,11 +377,13 @@ class MapAnnotationController {
 
   Future<void> syncFacilityPins(
     List<Facility> facilities,
-    FacilityCategory? filter,
-  ) async {
+    FacilityCategory? filter, {
+    bool force = false,
+  }) async {
     final manager = _facilityManager;
     if (manager == null) return;
-    if (identical(facilities, _lastSourceFacilities) &&
+    if (!force &&
+        identical(facilities, _lastSourceFacilities) &&
         _lastAppliedFilter == filter) {
       return;
     }
@@ -400,6 +508,8 @@ class MapAnnotationController {
   ) async {
     final manager = _polygonManager;
     if (manager == null) return;
+    _lastRings = rings;
+    _lastRingsMode = mode;
     await manager.deleteAll();
     final sorted = [...rings]..sort((a, b) => b.minutes.compareTo(a.minutes));
     await manager.createMulti([
@@ -420,13 +530,12 @@ class MapAnnotationController {
     ]);
   }
 
-  /// The web's `--route-color`, used for the analysis's dashed route.
-  static const _analysisRouteBlue = Color(0xFF0066FF);
-
-  /// The analysis's dashed "Shortest Route" to the nearest facility.
+  /// The analysis's dashed "Shortest Route" to the nearest facility, in
+  /// the web's `--route-color` (blue, or yellow in dark).
   Future<void> renderAnalysisRoute(List<GeoPoint> points) async {
     final manager = _analysisRouteManager;
     if (manager == null) return;
+    _lastAnalysisRoute = points;
     await manager.deleteAll();
     await manager.create(
       mapbox.PolylineAnnotationOptions(
@@ -436,20 +545,22 @@ class MapAnnotationController {
               mapbox.Position(point.longitude, point.latitude),
           ],
         ),
-        lineColor: _analysisRouteBlue.toARGB32(),
+        lineColor: _palette.route.toARGB32(),
         lineWidth: 4,
         lineOpacity: 0.9,
       ),
     );
   }
 
-  Future<void> clearAnalysisRoute() async => _analysisRouteManager?.deleteAll();
-
-  static const _routeGreen = Color(0xFF00AA55);
+  Future<void> clearAnalysisRoute() async {
+    _lastAnalysisRoute = null;
+    await _analysisRouteManager?.deleteAll();
+  }
 
   Future<void> renderRoute(List<GeoPoint> points) async {
     final manager = _polylineManager;
     if (manager == null) return;
+    _lastRoute = points;
     await manager.deleteAll();
     await manager.create(
       mapbox.PolylineAnnotationOptions(
@@ -459,20 +570,27 @@ class MapAnnotationController {
               mapbox.Position(point.longitude, point.latitude),
           ],
         ),
-        // The web's `--accent-green` (#0a5) at weight 5, opacity 0.9. Note
-        // the Live Traffic layer paints low-congestion roads a similar
-        // green (#2ECC71), so with traffic on, a route along a clear road
-        // can blend into it.
-        lineColor: _routeGreen.toARGB32(),
+        // The web's `--accent-green` (#0a5, #0f8 in dark) at weight 5,
+        // opacity 0.9. Note the Live Traffic layer paints low-congestion
+        // roads a similar green (#2ECC71), so with traffic on, a route
+        // along a clear road can blend into it.
+        lineColor: _palette.accentGreen.toARGB32(),
         lineWidth: 5,
         lineOpacity: 0.9,
       ),
     );
   }
 
-  Future<void> clearRoute() async => _polylineManager?.deleteAll();
+  Future<void> clearRoute() async {
+    _lastRoute = null;
+    await _polylineManager?.deleteAll();
+  }
 
   Future<void> clearIsochroneAndRoute() async {
+    _lastRings = null;
+    _lastRingsMode = null;
+    _lastRoute = null;
+    _lastAnalysisRoute = null;
     await _polygonManager?.deleteAll();
     await _polylineManager?.deleteAll();
     await _analysisRouteManager?.deleteAll();
@@ -506,7 +624,7 @@ class MapAnnotationController {
               mapbox.Position(point.longitude, point.latitude),
           ],
         ),
-        lineColor: AppPalette.light.boundary.toARGB32(),
+        lineColor: _palette.boundary.toARGB32(),
         lineWidth: 2,
       ),
     );

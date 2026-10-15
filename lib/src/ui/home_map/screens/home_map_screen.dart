@@ -104,6 +104,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// the user has since panned/flown to (e.g. right after dropping a pin).
   mapbox.CameraViewportState? _initialViewport;
 
+  /// Whether the map was created in the dark style — fixed for the same
+  /// reason as [_initialViewport]; theme switches after that are made by
+  /// [MapAnnotationController.setTheme].
+  bool? _initialStyleDark;
+
   /// Set for exactly one frame when Go to Help's "Send SOS instead" hands
   /// off into [GetHelpSheet] — read by that widget's `initState` to open
   /// straight into "Finding a responder…" instead of its normal
@@ -827,6 +832,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   Future<void> _onMapCreated(mapbox.MapboxMap mapboxMap) async {
     await _mapController.onMapCreated(
       mapboxMap,
+      dark: _initialStyleDark ?? false,
       onFacilityTap: _onFacilityTapped,
     );
     final state = ref.read(homeMapViewModelProvider).value;
@@ -846,6 +852,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   Widget build(BuildContext context) {
     final homeMapAsync = ref.watch(homeMapViewModelProvider);
     final state = homeMapAsync.value;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    unawaited(_mapController.setTheme(context.palette, dark: isDark));
     if (state != null) {
       unawaited(
         _mapController.syncFacilityPins(
@@ -919,7 +927,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             child: homeMapAsync.maybeWhen(
               data: (s) => _canRenderRealMap
                   ? mapbox.MapWidget(
-                      styleUri: mapbox.MapboxStyles.MAPBOX_STREETS,
+                      // Created in the current theme's style; later
+                      // switches go through the controller's setTheme.
+                      styleUri: MapAnnotationController.styleUriFor(
+                        dark: _initialStyleDark ??= isDark,
+                      ),
                       viewport: _initialViewport ??= mapbox.CameraViewportState(
                         center: mapboxPointFrom(s.center),
                         zoom: 12,
