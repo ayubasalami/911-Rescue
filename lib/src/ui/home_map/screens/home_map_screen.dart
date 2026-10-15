@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:url_launcher/url_launcher.dart';
 
@@ -16,8 +17,11 @@ import '../../../data/models/geo_point.dart';
 import '../../../data/models/route_point.dart';
 import '../../../data/models/triage.dart';
 import '../../../data/services/analytics_service.dart';
+import '../../../data/services/facility_service.dart';
 import '../../../data/services/interaction_service.dart';
+import '../../../routing/app_router.dart';
 import '../../core/view_model/auth_view_model.dart';
+import '../../dashboard/screens/dashboard_screen.dart';
 import '../../core/view_model/saved_facilities_view_model.dart';
 import '../../get_help/widgets/get_help_sheet.dart';
 import '../../triage_chat/widgets/triage_chat_sheet.dart';
@@ -575,6 +579,51 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _viewModel.openRoutePlanner();
   }
 
+  /// My Dashboard, then whatever it asked for as it closed: a row tap
+  /// shows that facility on the map, a saved facility's Navigate opens
+  /// the Route Planner to it — the web's `/?view=` and `/?nav=`.
+  Future<void> _openDashboard() async {
+    _scaffoldKey.currentState?.closeDrawer();
+    final request = await context.push<DashboardRequest>(AppRoute.dashboard);
+    if (request == null || !mounted) return;
+    final facility = _facilityFor(request);
+    if (facility == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Couldn\'t find ${request.facilityName} on the map.'),
+        ),
+      );
+      return;
+    }
+    if (request.navigate) {
+      _openPlannerTo(facility);
+    } else {
+      await _selectFacility(facility);
+    }
+  }
+
+  /// The loaded facility with that name, else one built from the saved
+  /// coordinates.
+  Facility? _facilityFor(DashboardRequest request) {
+    final facilities =
+        ref.read(homeMapViewModelProvider).value?.facilities ??
+        const <Facility>[];
+    for (final facility in facilities) {
+      if (facility.name == request.facilityName) return facility;
+    }
+    final latitude = request.latitude;
+    final longitude = request.longitude;
+    if (latitude == null || longitude == null) return null;
+    return Facility(
+      id: 'saved:${request.facilityName}',
+      name: request.facilityName,
+      category: classifyFacilityCategory(request.category),
+      rawCategory: request.category,
+      latitude: latitude,
+      longitude: longitude,
+    );
+  }
+
   /// Saves on the phone whether or not anyone is signed in — nobody should
   /// have to sign in to bookmark a hospital mid-emergency — and to the
   /// account too when signed in.
@@ -946,6 +995,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         onUseCurrentLocation: _recenterOnUser,
         onClearMap: _clearActiveFeature,
         onSelectSearchResult: _selectFacility,
+        onOpenDashboard: _openDashboard,
         searchFocusNode: _searchFocusNode,
       ),
       body: Stack(

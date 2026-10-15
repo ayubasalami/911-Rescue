@@ -39,6 +39,17 @@ class SavedFacilitiesViewModel extends AsyncNotifier<List<SavedFacility>> {
   bool isSaved(Facility facility) =>
       state.value?.any((item) => item.name == facility.name) ?? false;
 
+  /// Unsaves by name — the dashboard's Remove, which has no [Facility].
+  Future<void> remove(String name) async {
+    final signedIn = ref.read(authViewModelProvider).value != null;
+    final current = state.value ?? const <SavedFacility>[];
+    state = AsyncData([
+      for (final item in current)
+        if (item.name != name) item,
+    ]);
+    state = AsyncData(await _repository.unsave(name, signedIn: signedIn));
+  }
+
   /// Saves or unsaves [facility]; returns whether it's now saved.
   Future<bool> toggle(Facility facility) async {
     final signedIn = ref.read(authViewModelProvider).value != null;

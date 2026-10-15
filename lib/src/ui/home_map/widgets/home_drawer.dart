@@ -53,6 +53,7 @@ class HomeDrawer extends ConsumerWidget {
     required this.onUseCurrentLocation,
     required this.onClearMap,
     required this.onSelectSearchResult,
+    required this.onOpenDashboard,
     this.searchFocusNode,
   });
 
@@ -68,6 +69,10 @@ class HomeDrawer extends ConsumerWidget {
   /// Flies to and selects a tapped search result — same reason as
   /// [onUseCurrentLocation]: needs the screen's MapAnnotationController.
   final ValueChanged<Facility> onSelectSearchResult;
+
+  /// Opens My Dashboard — the screen handles what it asks for on close
+  /// (show a facility, or navigate to one).
+  final VoidCallback onOpenDashboard;
 
   /// Owned by the screen so its side-button search icon can open the
   /// drawer and focus this field in one tap.
@@ -92,7 +97,7 @@ class HomeDrawer extends ConsumerWidget {
               onClose: () => Scaffold.of(context).closeDrawer(),
             ),
             const Divider(height: 1),
-            const _AccountSection(),
+            _AccountSection(onOpenDashboard: onOpenDashboard),
             const Divider(height: 1),
             _SearchSection(
               onUseCurrentLocation: () {
@@ -715,7 +720,9 @@ class _HelpLinksSection extends StatelessWidget {
 /// The web sidebar's account block: "Sign in with Google" when signed
 /// out; avatar, name, email and Logout when signed in.
 class _AccountSection extends ConsumerStatefulWidget {
-  const _AccountSection();
+  const _AccountSection({required this.onOpenDashboard});
+
+  final VoidCallback onOpenDashboard;
 
   @override
   ConsumerState<_AccountSection> createState() => _AccountSectionState();
@@ -743,6 +750,7 @@ class _AccountSectionState extends ConsumerState<_AccountSection> {
       child: user != null
           ? _Profile(
               user: user,
+              onOpenDashboard: widget.onOpenDashboard,
               onLogout: () =>
                   ref.read(authViewModelProvider.notifier).signOut(),
             )
@@ -783,9 +791,14 @@ class _AccountSectionState extends ConsumerState<_AccountSection> {
 }
 
 class _Profile extends StatelessWidget {
-  const _Profile({required this.user, required this.onLogout});
+  const _Profile({
+    required this.user,
+    required this.onOpenDashboard,
+    required this.onLogout,
+  });
 
   final AppUser user;
+  final VoidCallback onOpenDashboard;
   final VoidCallback onLogout;
 
   @override
@@ -842,19 +855,34 @@ class _Profile extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: onLogout,
-            style: TextButton.styleFrom(
-              foregroundColor: context.palette.danger,
-              visualDensity: VisualDensity.compact,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            OutlinedButton(
+              onPressed: onOpenDashboard,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: context.palette.primary,
+                side: BorderSide(color: context.palette.primary),
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+              ),
+              child: const Text(
+                '📊 My Dashboard',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
             ),
-            child: const Text(
-              'Logout',
-              style: TextStyle(fontWeight: FontWeight.w600),
+            TextButton(
+              onPressed: onLogout,
+              style: TextButton.styleFrom(
+                foregroundColor: context.palette.danger,
+                visualDensity: VisualDensity.compact,
+              ),
+              child: const Text(
+                'Logout',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
             ),
-          ),
+          ],
         ),
       ],
     );
