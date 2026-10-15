@@ -421,6 +421,11 @@ class MapAnnotationController {
   }) async {
     _map = mapboxMap;
     _styleDark = dark;
+    // Mapbox's default top-left scale bar sits under the status bar; the
+    // web map has none.
+    await mapboxMap.scaleBar.updateSettings(
+      mapbox.ScaleBarSettings(enabled: false),
+    );
     _polygonManager = await mapboxMap.annotations
         .createPolygonAnnotationManager();
 
