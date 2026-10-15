@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data' show Uint8List;
 import 'dart:ui' as ui;
 
@@ -61,6 +62,112 @@ Future<ui.Image> _renderLocationPinImage(Color color) async {
   return picture.toImage(size.toInt(), size.toInt());
 }
 
+/// The web's `--user-purple`, for the "You are here" marker.
+const _userPurple = Color(0xFF7C3AED);
+
+/// Pixel density the heading marker is drawn at — registered with the same
+/// scale so it stays sharp.
+const _markerScale = 3.0;
+
+/// The web's `.user-heading-cone`: a 34 px wedge pointing up from the image
+/// centre, fading out towards its tip. Rotated on the map to the heading.
+Future<ui.Image> _renderHeadingConeImage() async {
+  const size = 68.0;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)..scale(_markerScale);
+  const centre = Offset(size / 2, size / 2);
+  final path = Path()
+    ..moveTo(centre.dx - 17, centre.dy)
+    ..lineTo(centre.dx + 17, centre.dy)
+    ..lineTo(centre.dx, centre.dy - 34)
+    ..close();
+  canvas.drawPath(
+    path,
+    Paint()
+      ..shader = ui.Gradient.linear(
+        Offset(centre.dx, centre.dy - 34),
+        centre,
+        [_userPurple.withValues(alpha: 0), _userPurple.withValues(alpha: 0.32)],
+        [0.05, 0.9],
+      ),
+  );
+  final picture = recorder.endRecording();
+  return picture.toImage(
+    (size * _markerScale).toInt(),
+    (size * _markerScale).toInt(),
+  );
+}
+
+/// The web's `.user-heading-dot` and "You are here" label: a 16 px purple
+/// dot with a white ring centred in the image, the pill underneath.
+Future<ui.Image> _renderHeadingDotImage() async {
+  const width = 120.0;
+  const height = 68.0;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)..scale(_markerScale);
+  const centre = Offset(width / 2, height / 2);
+
+  canvas
+    ..drawCircle(
+      centre,
+      9,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.45)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    )
+    ..drawCircle(centre, 8, Paint()..color = Colors.white)
+    ..drawCircle(centre, 5, Paint()..color = _userPurple);
+
+  final label = TextPainter(
+    textDirection: TextDirection.ltr,
+    text: const TextSpan(
+      text: 'You are here',
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: 10,
+        fontWeight: FontWeight.w800,
+      ),
+    ),
+  )..layout();
+  final pill = RRect.fromRectAndRadius(
+    Rect.fromCenter(
+      center: Offset(centre.dx, centre.dy + 14 + (label.height + 4) / 2),
+      width: label.width + 16,
+      height: label.height + 4,
+    ),
+    const Radius.circular(10),
+  );
+  canvas
+    ..drawRRect(
+      pill.shift(const Offset(0, 1)),
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.35)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
+    )
+    ..drawRRect(pill, Paint()..color = _userPurple);
+  label.paint(canvas, Offset(centre.dx - label.width / 2, pill.top + 2));
+
+  final picture = recorder.endRecording();
+  return picture.toImage(
+    (width * _markerScale).toInt(),
+    (height * _markerScale).toInt(),
+  );
+}
+
+/// Blends [target] into [previous] by [weight] on the circle — the web's
+/// heading smoothing, so a jittery GPS heading doesn't swing the map.
+double _blendBearing(double? previous, double target, [double weight = 0.25]) {
+  if (previous == null) return target;
+  final p = previous * math.pi / 180;
+  final t = target * math.pi / 180;
+  final y = (1 - weight) * math.sin(p) + weight * math.sin(t);
+  final x = (1 - weight) * math.cos(p) + weight * math.cos(t);
+  return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+}
+
+/// The smaller angle between two bearings, 0–180°.
+double bearingGap(double a, double b) => ((a - b + 540) % 360 - 180).abs();
+
 Future<Uint8List> _pngBytes(ui.Image image) async {
   final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
   return byteData!.buffer.asUint8List();
@@ -114,6 +221,30 @@ class MapAnnotationController {
   /// boundary is static and toggled independently; sharing a manager would
   /// mean every route change wipes the boundary outline too.
   mapbox.PolylineAnnotationManager? _boundaryManager;
+
+  /// The tracked "You are here" marker — on top of everything, and in place
+  /// of the location puck while following a route.
+  mapbox.PointAnnotationManager? _headingManager;
+  mapbox.PointAnnotation? _headingCone;
+  mapbox.PointAnnotation? _headingDot;
+  GeoPoint? _headingPoint;
+  double? _headingDegrees;
+  bool _puckHidden = false;
+
+  /// Marker updates run one at a time, so overlapping rebuilds can't create
+  /// it twice.
+  Future<void> _headingSync = Future.value();
+
+  static const _headingConeImageId = 'user-heading-cone';
+  static const _headingDotImageId = 'user-heading-dot';
+
+  /// Follow-your-direction: the smoothed heading, the last one asked for,
+  /// and the bearing the map was last turned to — anything else means the
+  /// user rotated it by hand.
+  double? _smoothedHeading;
+  double? _followTarget;
+  double _bearingSetByFollow = 0;
+  double get bearingSetByFollow => _bearingSetByFollow;
   List<GeoPoint>? _lastBoundary;
 
   List<Facility> _lastSourceFacilities = const [];
@@ -136,13 +267,22 @@ class MapAnnotationController {
 
   Future<void> _ensureStyleImage(
     String imageId,
-    Future<ui.Image> Function() render,
-  ) async {
+    Future<ui.Image> Function() render, {
+    double scale = 1.0,
+  }) async {
     if (_registeredStyleImages.contains(imageId)) return;
     final map = _map;
     if (map == null) return;
     final mbxImage = await _mbxImageFrom(await render());
-    await map.style.addStyleImage(imageId, 1.0, mbxImage, false, [], [], null);
+    await map.style.addStyleImage(
+      imageId,
+      scale,
+      mbxImage,
+      false,
+      [],
+      [],
+      null,
+    );
     _registeredStyleImages.add(imageId);
   }
 
@@ -221,6 +361,16 @@ class MapAnnotationController {
     _boundaryManager = await mapboxMap.annotations
         .createPolylineAnnotationManager();
 
+    final headingManager = await mapboxMap.annotations
+        .createPointAnnotationManager();
+    // The cone turns with the map, so its rotation is a compass bearing.
+    await headingManager.setIconRotationAlignment(
+      mapbox.IconRotationAlignment.MAP,
+    );
+    await headingManager.setIconAllowOverlap(true);
+    await headingManager.setIconIgnorePlacement(true);
+    _headingManager = headingManager;
+
     await _updateLocationPuck();
     // The theme may have changed while the map was being created.
     await _applyTheme();
@@ -285,6 +435,18 @@ class MapAnnotationController {
     _registeredStyleImages.clear();
     await _updateLocationPuck();
 
+    final headingPoint = _headingPoint;
+    final headingDegrees = _headingDegrees;
+    _headingPoint = null;
+    _headingDegrees = null;
+    _headingCone = null;
+    _headingDot = null;
+    _puckHidden = false;
+    await _headingManager?.deleteAll();
+    if (headingPoint != null) {
+      await syncHeadingMarker(headingPoint, headingDegrees);
+    }
+
     final facilities = _lastSourceFacilities;
     _lastSourceFacilities = const [];
     await syncFacilityPins(facilities, _lastAppliedFilter, force: true);
@@ -324,6 +486,121 @@ class MapAnnotationController {
     final analysisRoute = _lastAnalysisRoute;
     await _analysisRouteManager?.deleteAll();
     if (analysisRoute != null) await renderAnalysisRoute(analysisRoute);
+  }
+
+  /// Shows (or, with a null [point], removes) the web's purple "You are
+  /// here" dot with a cone towards [heading]. Hides the location puck while
+  /// shown. Safe to call on every build.
+  Future<void> syncHeadingMarker(GeoPoint? point, double? heading) {
+    if (identical(point, _headingPoint) && heading == _headingDegrees) {
+      return _headingSync;
+    }
+    _headingPoint = point;
+    _headingDegrees = heading;
+    return _headingSync = _headingSync.then(
+      (_) => _applyHeadingMarker(point, heading),
+    );
+  }
+
+  Future<void> _applyHeadingMarker(GeoPoint? point, double? heading) async {
+    final manager = _headingManager;
+    final map = _map;
+    if (manager == null || map == null) return;
+
+    if (point == null) {
+      await manager.deleteAll();
+      _headingCone = null;
+      _headingDot = null;
+      if (_puckHidden) {
+        _puckHidden = false;
+        await _updateLocationPuck();
+      }
+      return;
+    }
+
+    if (!_puckHidden) {
+      _puckHidden = true;
+      await map.location.updateSettings(
+        mapbox.LocationComponentSettings(enabled: false),
+      );
+    }
+    await _ensureStyleImage(
+      _headingConeImageId,
+      _renderHeadingConeImage,
+      scale: _markerScale,
+    );
+    await _ensureStyleImage(
+      _headingDotImageId,
+      _renderHeadingDotImage,
+      scale: _markerScale,
+    );
+
+    final geometry = mapboxPointFrom(point);
+    if (heading == null) {
+      if (_headingCone case final cone?) await manager.delete(cone);
+      _headingCone = null;
+    } else if (_headingCone case final cone?) {
+      cone
+        ..geometry = geometry
+        ..iconRotate = heading;
+      await manager.update(cone);
+    } else {
+      _headingCone = await manager.create(
+        mapbox.PointAnnotationOptions(
+          geometry: geometry,
+          iconImage: _headingConeImageId,
+          iconRotate: heading,
+          symbolSortKey: 0,
+        ),
+      );
+    }
+
+    if (_headingDot case final dot?) {
+      dot.geometry = geometry;
+      await manager.update(dot);
+    } else {
+      _headingDot = await manager.create(
+        mapbox.PointAnnotationOptions(
+          geometry: geometry,
+          iconImage: _headingDotImageId,
+          symbolSortKey: 1,
+        ),
+      );
+    }
+  }
+
+  /// Turns the map so [heading] points up — smoothed, and only once it's
+  /// more than 3° off, as on the web. Safe to call on every build.
+  Future<void> followHeading(double heading) async {
+    final map = _map;
+    if (map == null || heading == _followTarget) return;
+    _followTarget = heading;
+    _smoothedHeading = _blendBearing(_smoothedHeading, heading);
+    final target = _smoothedHeading!;
+    final current = (await map.getCameraState()).bearing;
+    if (bearingGap(current, target) < 3) return;
+    _bearingSetByFollow = target;
+    await map.setCamera(mapbox.CameraOptions(bearing: target));
+  }
+
+  /// Follow mode just switched on: remember where the map points now, so
+  /// only a later hand rotation counts as leaving it.
+  Future<void> beginFollow() async {
+    final map = _map;
+    if (map == null) return;
+    _followTarget = null;
+    _bearingSetByFollow = (await map.getCameraState()).bearing;
+  }
+
+  /// Back to north up.
+  Future<void> resetNorth() async {
+    _smoothedHeading = null;
+    _followTarget = null;
+    _bearingSetByFollow = 0;
+    await _map?.easeTo(
+      mapbox.CameraOptions(bearing: 0),
+      mapbox.MapAnimationOptions(duration: 300),
+    );
   }
 
   /// [shiftDown] lands [point] that many pixels below screen center instead

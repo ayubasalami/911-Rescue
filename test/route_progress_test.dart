@@ -38,4 +38,11 @@ void main() {
     expect(progress.segmentIndex, 3);
     expect(progress.remainingMeters, closeTo(200, 5));
   });
+
+  test('bearing points the way of travel', () {
+    expect(bearingDegrees(_road[0], _road[1]), closeTo(0, 0.5));
+    expect(bearingDegrees(_road[1], _road[0]), closeTo(180, 0.5));
+    const east = GeoPoint(latitude: 6.5158, longitude: 3.3906);
+    expect(bearingDegrees(_road[0], east), closeTo(90, 0.5));
+  });
 }

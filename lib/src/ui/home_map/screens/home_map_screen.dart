@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'dart:math' as math;
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -90,6 +91,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// screen instead of just the hint.
   final ValueNotifier<double> _cameraZoom = ValueNotifier(12);
 
+  /// The map's bearing, for the compass button's needle and visibility.
+  final ValueNotifier<double> _mapBearing = ValueNotifier(0);
+
   /// Tracks which side of [_facilityVisibleZoom] the camera was on last, so
   /// [_onCameraChanged] only re-syncs facility markers when that actually
   /// flips rather than on every frame.
@@ -154,6 +158,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _analysisPingAnchor.dispose();
     _pingActive.dispose();
     _cameraZoom.dispose();
+    _mapBearing.dispose();
     _searchFocusNode.dispose();
     super.dispose();
   }
@@ -202,6 +207,19 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       );
     }
     _cameraZoom.value = event.cameraState.zoom;
+
+    final bearing = event.cameraState.bearing;
+    if (bearingGap(bearing, _mapBearing.value) > 0.2) {
+      _mapBearing.value = bearing;
+    }
+    // Turning the map by hand leaves follow-your-direction, as on the web.
+    final following =
+        ref.read(homeMapViewModelProvider).value?.goToHelpFollowHeading ??
+        false;
+    if (following &&
+        bearingGap(bearing, _mapController.bearingSetByFollow) > 3) {
+      _viewModel.setFollowHeading(false);
+    }
 
     // Only re-sync facility markers when zoom crosses the visibility
     // threshold, not on every frame — syncFacilityPins deletes and
@@ -388,6 +406,20 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     await _mapController.renderRoute([origin, ...route.points]);
     if (!mounted) return;
     await _mapController.flyToBounds(route.points);
+  }
+
+  /// The web's compass: following → north up and stop following; north up
+  /// already → follow your direction; turned by hand → back to north.
+  void _onCompassTapped(double bearing) {
+    final state = ref.read(homeMapViewModelProvider).value;
+    if (state?.goToHelpFollowHeading ?? false) {
+      _viewModel.setFollowHeading(false);
+      unawaited(_mapController.resetNorth());
+    } else if (bearingGap(bearing, 0) <= 0.5) {
+      _viewModel.setFollowHeading(true);
+    } else {
+      unawaited(_mapController.resetNorth());
+    }
   }
 
   /// Stop following: back to the static preview, with the whole line drawn
@@ -959,6 +991,22 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       // live GPS stream (see HomeMapViewModel._onTrackedPosition) rather
       // than from an explicit screen action, so the line is kept in sync
       // here reactively: driven part grey, road ahead in colour.
+      // The web's purple "You are here" with its heading cone, from the
+      // first tracked fix; the map turns with it while following.
+      final tracking = state.goToHelpTracking;
+      unawaited(
+        _mapController.syncHeadingMarker(
+          tracking && state.goToHelpAccuracyMeters != null
+              ? state.goToHelpOrigin
+              : null,
+          tracking ? state.goToHelpHeading : null,
+        ),
+      );
+      if (tracking && state.goToHelpFollowHeading) {
+        if (state.goToHelpHeading case final heading?) {
+          unawaited(_mapController.followHeading(heading));
+        }
+      }
       if (state.goToHelpTracking) {
         final route = state.goToHelpRoute;
         final progress = state.goToHelpProgress;
@@ -973,6 +1021,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     }
 
     ref.listen(homeMapViewModelProvider, (previous, next) {
+      if ((next.value?.goToHelpFollowHeading ?? false) &&
+          !(previous?.value?.goToHelpFollowHeading ?? false)) {
+        unawaited(_mapController.beginFollow());
+      }
       final message = next.value?.errorMessage;
       if (message != null &&
           message.isNotEmpty &&
@@ -1216,6 +1268,35 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     size: _controlIconSize,
                   ),
                   onTap: _viewModel.toggleLiveTrafficLayer,
+                ),
+                // The web's compass: shown while following your direction
+                // or whenever the map is turned.
+                ValueListenableBuilder<double>(
+                  valueListenable: _mapBearing,
+                  builder: (context, bearing, _) {
+                    final following =
+                        (state?.goToHelpTracking ?? false) &&
+                        (state?.goToHelpFollowHeading ?? false);
+                    final rotated = bearingGap(bearing, 0) > 0.5;
+                    if (!following && !rotated) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Tooltip(
+                        message: following
+                            ? 'Following your direction — tap for north-up'
+                            : 'Tap to face north',
+                        child: MapControlButton(
+                          icon: _CompassNeedle(
+                            bearing: bearing,
+                            color: following
+                                ? context.palette.primary
+                                : context.palette.textPrimary,
+                          ),
+                          onTap: () => _onCompassTapped(bearing),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -1828,4 +1909,59 @@ class _AnalyzingPill extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// The web compass's needle: an outlined north half and a faint south
+/// half, turned against the map's [bearing] so it always points north.
+class _CompassNeedle extends StatelessWidget {
+  const _CompassNeedle({required this.bearing, required this.color});
+
+  final double bearing;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Transform.rotate(
+    angle: -bearing * math.pi / 180,
+    child: CustomPaint(
+      size: const Size.square(20),
+      painter: _CompassNeedlePainter(color),
+    ),
+  );
+}
+
+class _CompassNeedlePainter extends CustomPainter {
+  _CompassNeedlePainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // The web's 24-unit SVG polygons, scaled to [size].
+    canvas.scale(size.width / 24);
+    final north = Path()
+      ..moveTo(12, 2)
+      ..lineTo(16, 12)
+      ..lineTo(12, 9.5)
+      ..lineTo(8, 12)
+      ..close();
+    final south = Path()
+      ..moveTo(12, 22)
+      ..lineTo(8, 12)
+      ..lineTo(12, 14.5)
+      ..lineTo(16, 12)
+      ..close();
+    final stroke = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeJoin = StrokeJoin.round;
+    canvas
+      ..drawPath(north, stroke)
+      ..drawPath(south, Paint()..color = color.withValues(alpha: 0.35))
+      ..drawPath(south, stroke);
+  }
+
+  @override
+  bool shouldRepaint(_CompassNeedlePainter oldDelegate) =>
+      oldDelegate.color != color;
 }

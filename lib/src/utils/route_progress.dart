@@ -40,6 +40,19 @@ double haversineMeters(GeoPoint a, GeoPoint b) {
   return 2 * _earthRadiusMeters * math.asin(math.sqrt(h));
 }
 
+/// The compass bearing from [a] to [b] (0° = north, clockwise) — the web's
+/// `Ip`, used for heading when the GPS doesn't report one.
+double bearingDegrees(GeoPoint a, GeoPoint b) {
+  final dLng = _radians(b.longitude - a.longitude);
+  final y = math.sin(dLng) * math.cos(_radians(b.latitude));
+  final x =
+      math.cos(_radians(a.latitude)) * math.sin(_radians(b.latitude)) -
+      math.sin(_radians(a.latitude)) *
+          math.cos(_radians(b.latitude)) *
+          math.cos(dLng);
+  return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+}
+
 /// [point] projected onto the segment [a]→[b] on a local flat plane — fine
 /// at street scale.
 ({double distance, GeoPoint foot}) _snapToSegment(

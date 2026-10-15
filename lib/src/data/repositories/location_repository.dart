@@ -94,6 +94,10 @@ class LocationRepository {
           longitude: position.longitude,
         ),
         accuracyMeters: position.accuracy,
+        // Platforms report -1 (or a stale value) when not moving.
+        headingDegrees: position.heading >= 0 && position.speed > 0.5
+            ? position.heading
+            : null,
       ),
     );
   }

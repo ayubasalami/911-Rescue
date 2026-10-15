@@ -105,6 +105,8 @@ class HomeMapState {
     this.goToHelpOffRoute = false,
     this.goToHelpOffRouteNotice,
     this.goToHelpRecalculating = false,
+    this.goToHelpHeading,
+    this.goToHelpFollowHeading = false,
     this.goToHelpVoiceEnabled = false,
     this.goToHelpSosConfirming = false,
     this.goToHelpCloseConfirming = false,
@@ -229,6 +231,15 @@ class HomeMapState {
   final String? goToHelpOffRouteNotice;
   final bool goToHelpRecalculating;
 
+  /// Direction of travel while tracking (0° = north) — the GPS's, or from
+  /// the last two fixes once they're 8 m apart. Turns the "You are here"
+  /// cone, and the map when [goToHelpFollowHeading].
+  final double? goToHelpHeading;
+
+  /// The map rotates so the direction of travel points up — on from Start,
+  /// toggled with the compass button, as on the web.
+  final bool goToHelpFollowHeading;
+
   /// Whether spoken turn-by-turn instructions are on — matches the web
   /// platform's "Voice directions" toggle.
   final bool goToHelpVoiceEnabled;
@@ -292,6 +303,8 @@ class HomeMapState {
     bool? goToHelpOffRoute,
     Object? goToHelpOffRouteNotice = _unset,
     bool? goToHelpRecalculating,
+    Object? goToHelpHeading = _unset,
+    bool? goToHelpFollowHeading,
     bool? goToHelpVoiceEnabled,
     bool? goToHelpSosConfirming,
     bool? goToHelpCloseConfirming,
@@ -373,6 +386,11 @@ class HomeMapState {
           : goToHelpOffRouteNotice as String?,
       goToHelpRecalculating:
           goToHelpRecalculating ?? this.goToHelpRecalculating,
+      goToHelpHeading: identical(goToHelpHeading, _unset)
+          ? this.goToHelpHeading
+          : goToHelpHeading as double?,
+      goToHelpFollowHeading:
+          goToHelpFollowHeading ?? this.goToHelpFollowHeading,
       goToHelpVoiceEnabled: goToHelpVoiceEnabled ?? this.goToHelpVoiceEnabled,
       goToHelpSosConfirming:
           goToHelpSosConfirming ?? this.goToHelpSosConfirming,
@@ -411,6 +429,9 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   /// Route steps already announced, so each turn is said once (the web's
   /// spoken set) — cleared whenever the route changes.
   final Set<int> _spokenSteps = {};
+
+  /// The last fix, for working out a heading the GPS didn't give.
+  GeoPoint? _lastHeadingPoint;
 
   @override
   Future<HomeMapState> build() {
@@ -594,6 +615,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpOffRoute: false,
         goToHelpOffRouteNotice: null,
         goToHelpRecalculating: false,
+        goToHelpHeading: null,
+        goToHelpFollowHeading: false,
         goToHelpSosConfirming: false,
       ),
     );
@@ -626,6 +649,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpOffRoute: false,
         goToHelpOffRouteNotice: null,
         goToHelpRecalculating: false,
+        goToHelpHeading: null,
+        goToHelpFollowHeading: false,
         goToHelpSosConfirming: false,
       ),
     );
@@ -664,6 +689,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpOffRoute: false,
         goToHelpOffRouteNotice: null,
         goToHelpRecalculating: false,
+        goToHelpHeading: null,
+        goToHelpFollowHeading: false,
         goToHelpSosConfirming: false,
       ),
     );
@@ -1023,6 +1050,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpOffRoute: false,
         goToHelpOffRouteNotice: null,
         goToHelpRecalculating: false,
+        goToHelpHeading: null,
+        goToHelpFollowHeading: false,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
         goToHelpCloseConfirming: false,
@@ -1133,6 +1162,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpOffRoute: false,
         goToHelpOffRouteNotice: null,
         goToHelpRecalculating: false,
+        goToHelpHeading: null,
+        goToHelpFollowHeading: false,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
         goToHelpCloseConfirming: false,
@@ -1196,6 +1227,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpOffRoute: false,
         goToHelpOffRouteNotice: null,
         goToHelpRecalculating: false,
+        goToHelpHeading: null,
+        goToHelpFollowHeading: false,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
         goToHelpCloseConfirming: false,
@@ -1279,6 +1312,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpOffRoute: false,
         goToHelpOffRouteNotice: null,
         goToHelpRecalculating: false,
+        goToHelpHeading: null,
+        goToHelpFollowHeading: false,
         goToHelpSosConfirming: false,
         goToHelpCloseConfirming: false,
         routeChipDismissed: false,
@@ -1296,9 +1331,16 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     _log(AnalyticsEvents.routeNavigationStarted);
     _cancelTracking();
     _trackingStartedAt = DateTime.now();
+    _lastHeadingPoint = null;
     _update(
-      (s) =>
-          s.copyWith(goToHelpTracking: true, goToHelpArrivedTripMinutes: null),
+      (s) => s.copyWith(
+        goToHelpTracking: true,
+        goToHelpArrivedTripMinutes: null,
+        goToHelpAccuracyMeters: null,
+        goToHelpHeading: null,
+        // The web turns the map with you as soon as you press Start.
+        goToHelpFollowHeading: true,
+      ),
     );
     _trackingSubscription = ref
         .read(locationRepositoryProvider)
@@ -1317,6 +1359,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpProgress: null,
         goToHelpOffRoute: false,
         goToHelpOffRouteNotice: null,
+        goToHelpHeading: null,
+        goToHelpFollowHeading: false,
       ),
     );
   }
@@ -1331,10 +1375,20 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       return;
     }
 
+    // The GPS's heading, else the direction from the last fix once it's
+    // more than 8 m away; otherwise keep the last known one.
+    final last = _lastHeadingPoint;
+    final heading =
+        tracked.headingDegrees ??
+        (last != null && haversineMeters(last, tracked.point) > 8
+            ? bearingDegrees(last, tracked.point)
+            : null);
+    _lastHeadingPoint = tracked.point;
     _update(
       (s) => s.copyWith(
         goToHelpOrigin: tracked.point,
         goToHelpAccuracyMeters: tracked.accuracyMeters,
+        goToHelpHeading: heading ?? s.goToHelpHeading,
       ),
     );
 
@@ -1507,6 +1561,10 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       }
     }
   }
+
+  /// The compass button's follow-your-direction mode.
+  void setFollowHeading(bool follow) =>
+      _update((s) => s.copyWith(goToHelpFollowHeading: follow));
 
   /// Turns spoken turn-by-turn instructions on/off — the web platform's
   /// "Voice directions" toggle. Turning it on mid-route checks for a turn

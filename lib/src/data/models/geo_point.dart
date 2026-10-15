@@ -9,8 +9,16 @@ class GeoPoint {
 /// being tracked — [accuracyMeters] drives the "Weak/Good GPS signal"
 /// indicator, matching the web platform's live navigation card.
 class TrackedPosition {
-  const TrackedPosition({required this.point, required this.accuracyMeters});
+  const TrackedPosition({
+    required this.point,
+    required this.accuracyMeters,
+    this.headingDegrees,
+  });
 
   final GeoPoint point;
   final double accuracyMeters;
+
+  /// The GPS's direction of travel (0° = north, clockwise), or null when
+  /// standing still or unknown.
+  final double? headingDegrees;
 }
