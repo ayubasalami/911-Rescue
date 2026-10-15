@@ -27,7 +27,7 @@ const _sources = [
   ),
   (
     name: 'Project OSRM',
-    url: 'http://project-osrm.org/',
+    url: 'https://project-osrm.org/',
     desc:
         'Fallback routing engine used only if the primary routing service '
         'is unavailable.',

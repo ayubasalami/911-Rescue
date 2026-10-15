@@ -36,6 +36,10 @@
 			</array>
 		</dict>
 	</array>
+	<!-- HTTPS only, which is exempt — saves the export compliance question
+	     on every App Store Connect upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
