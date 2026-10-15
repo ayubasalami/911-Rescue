@@ -1420,6 +1420,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     onClose: _closeGoToHelp,
                     tracking: state.goToHelpTracking,
                     accuracyMeters: state.goToHelpAccuracyMeters,
+                    arrivedTripMinutes: state.goToHelpArrivedTripMinutes,
                     voiceEnabled: state.goToHelpVoiceEnabled,
                     onStop: _viewModel.stopGoToHelpTracking,
                     sosConfirming: state.goToHelpSosConfirming,

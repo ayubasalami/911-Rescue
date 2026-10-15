@@ -10,7 +10,7 @@ final interactionServiceProvider = Provider<InteractionService>(
 
 /// What the user did with a facility — the web's `interaction_type`s,
 /// which feed the dashboard's Recent Activity and Most Visited.
-enum FacilityInteraction { navigated, analyzed }
+enum FacilityInteraction { navigated, analyzed, arrived }
 
 /// Records facility activity against the signed-in account
 /// (`/api/log_interaction`). Needs the session cookie.

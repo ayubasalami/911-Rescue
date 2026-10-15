@@ -26,6 +26,7 @@ class GoToHelpCard extends StatelessWidget {
     required this.onClose,
     this.tracking = false,
     this.accuracyMeters,
+    this.arrivedTripMinutes,
     this.voiceEnabled = false,
     this.sosConfirming = false,
     this.closeConfirming = false,
@@ -54,6 +55,10 @@ class GoToHelpCard extends StatelessWidget {
   /// The live GPS fix's accuracy while [tracking], for the "Weak/Good GPS
   /// signal" line — null hides that line (e.g. before the first fix).
   final double? accuracyMeters;
+
+  /// Set once live tracking reached the destination: the card becomes the
+  /// web's green "You have arrived" with the trip time and Done ([onClose]).
+  final int? arrivedTripMinutes;
 
   /// Whether spoken turn-by-turn instructions are on — flips the voice
   /// button's label between "on"/"off".
@@ -85,15 +90,58 @@ class GoToHelpCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(AppRadii.md),
-          border: Border.all(color: context.palette.primary, width: 2),
+          border: Border.all(
+            color: arrivedTripMinutes != null
+                ? context.palette.accentGreen
+                : context.palette.primary,
+            width: 2,
+          ),
         ),
         padding: const EdgeInsets.all(14),
-        child: tracking
+        child: arrivedTripMinutes != null
+            ? _buildArrived(context, arrivedTripMinutes!)
+            : tracking
             ? (expanded
                   ? _buildTrackingExpanded(context)
                   : _buildTrackingMinimized(context))
             : (expanded ? _buildExpanded(context) : _buildMinimized(context)),
       ),
+    );
+  }
+
+  Widget _buildArrived(BuildContext context, int tripMinutes) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          '✓ You have arrived',
+          style: TextStyle(
+            color: context.palette.accentGreen,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          destination.name,
+          style: TextStyle(
+            color: context.palette.textSecondary,
+            fontSize: 12,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Trip took $tripMinutes min',
+          style: TextStyle(
+            color: context.palette.textSecondary,
+            fontSize: 10.5,
+          ),
+        ),
+        const SizedBox(height: 10),
+        AppButton(label: 'Done', onPressed: onClose),
+      ],
     );
   }
 

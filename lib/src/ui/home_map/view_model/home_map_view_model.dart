@@ -1,4 +1,5 @@
 import 'dart:async' show StreamSubscription, unawaited;
+import 'dart:math' show max, min;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
@@ -97,6 +98,7 @@ class HomeMapState {
     this.goToHelpFollowsUser = false,
     this.goToHelpTracking = false,
     this.goToHelpAccuracyMeters,
+    this.goToHelpArrivedTripMinutes,
     this.goToHelpVoiceEnabled = false,
     this.goToHelpSosConfirming = false,
     this.goToHelpCloseConfirming = false,
@@ -203,6 +205,10 @@ class HomeMapState {
   /// signal" line — null when not tracking or before the first fix arrives.
   final double? goToHelpAccuracyMeters;
 
+  /// Set once live tracking reaches the destination — the card's "You
+  /// have arrived" with how long the trip took since Start. Null otherwise.
+  final int? goToHelpArrivedTripMinutes;
+
   /// Whether spoken turn-by-turn instructions are on — matches the web
   /// platform's "Voice directions" toggle.
   final bool goToHelpVoiceEnabled;
@@ -261,6 +267,7 @@ class HomeMapState {
     bool? goToHelpFollowsUser,
     bool? goToHelpTracking,
     Object? goToHelpAccuracyMeters = _unset,
+    Object? goToHelpArrivedTripMinutes = _unset,
     bool? goToHelpVoiceEnabled,
     bool? goToHelpSosConfirming,
     bool? goToHelpCloseConfirming,
@@ -330,6 +337,9 @@ class HomeMapState {
       goToHelpAccuracyMeters: identical(goToHelpAccuracyMeters, _unset)
           ? this.goToHelpAccuracyMeters
           : goToHelpAccuracyMeters as double?,
+      goToHelpArrivedTripMinutes: identical(goToHelpArrivedTripMinutes, _unset)
+          ? this.goToHelpArrivedTripMinutes
+          : goToHelpArrivedTripMinutes as int?,
       goToHelpVoiceEnabled: goToHelpVoiceEnabled ?? this.goToHelpVoiceEnabled,
       goToHelpSosConfirming:
           goToHelpSosConfirming ?? this.goToHelpSosConfirming,
@@ -354,6 +364,9 @@ class HomeMapState {
 class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   StreamSubscription<TrackedPosition>? _trackingSubscription;
   DateTime? _lastGoToHelpRouteFetch;
+
+  /// When Start was tapped, for the arrival card's trip time.
+  DateTime? _trackingStartedAt;
   String? _lastSpokenInstruction;
 
   @override
@@ -527,6 +540,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
+        goToHelpArrivedTripMinutes: null,
         goToHelpSosConfirming: false,
       ),
     );
@@ -554,6 +568,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
+        goToHelpArrivedTripMinutes: null,
         goToHelpSosConfirming: false,
       ),
     );
@@ -587,6 +602,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
+        goToHelpArrivedTripMinutes: null,
         goToHelpSosConfirming: false,
       ),
     );
@@ -941,6 +957,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     _update(
       (s) => s.copyWith(
         goToHelpDestination: destination,
+        goToHelpArrivedTripMinutes: null,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
         goToHelpCloseConfirming: false,
@@ -1046,6 +1063,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     _update(
       (s) => s.copyWith(
         goToHelpDestination: RoutePoint.fromFacility(facility),
+        goToHelpArrivedTripMinutes: null,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
         goToHelpCloseConfirming: false,
@@ -1104,6 +1122,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     _update(
       (s) => s.copyWith(
         goToHelpDestination: destination,
+        goToHelpArrivedTripMinutes: null,
         goToHelpRoute: route,
         goToHelpCardExpanded: true,
         goToHelpCloseConfirming: false,
@@ -1178,6 +1197,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
+        goToHelpArrivedTripMinutes: null,
         goToHelpSosConfirming: false,
         goToHelpCloseConfirming: false,
         routeChipDismissed: false,
@@ -1195,7 +1215,11 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     _log(AnalyticsEvents.routeNavigationStarted);
     _cancelTracking();
     _lastGoToHelpRouteFetch = null;
-    _update((s) => s.copyWith(goToHelpTracking: true));
+    _trackingStartedAt = DateTime.now();
+    _update(
+      (s) =>
+          s.copyWith(goToHelpTracking: true, goToHelpArrivedTripMinutes: null),
+    );
     _trackingSubscription = ref
         .read(locationRepositoryProvider)
         .positionStream()
@@ -1233,6 +1257,19 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       ),
     );
 
+    // The web's arrival rule: within 60 m, widened to the fix's accuracy
+    // when GPS is poor, but never beyond 150 m.
+    final distance = Geolocator.distanceBetween(
+      tracked.point.latitude,
+      tracked.point.longitude,
+      destination.latitude,
+      destination.longitude,
+    );
+    if (distance <= max(60, min(tracked.accuracyMeters, 150))) {
+      _arrive(destination);
+      return;
+    }
+
     final now = DateTime.now();
     final last = _lastGoToHelpRouteFetch;
     if (last != null && now.difference(last) < const Duration(seconds: 10)) {
@@ -1251,6 +1288,38 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       _update((s) => s.copyWith(goToHelpRoute: route));
       if (state.value?.goToHelpVoiceEnabled ?? false) {
         _speakUpcomingInstruction(route);
+      }
+    }
+  }
+
+  /// Live tracking reached [destination]: stop following, show "You have
+  /// arrived" with the trip time, say so when voice is on, and record it
+  /// on the account — once per trip, as on the web.
+  void _arrive(RoutePoint destination) {
+    _cancelTracking();
+    final started = _trackingStartedAt ?? DateTime.now();
+    final minutes = max(
+      1,
+      (DateTime.now().difference(started).inSeconds / 60).round(),
+    );
+    _update(
+      (s) => s.copyWith(
+        goToHelpTracking: false,
+        goToHelpArrivedTripMinutes: minutes,
+      ),
+    );
+    _log(AnalyticsEvents.routeArrived, {'trip_minutes': minutes});
+    if (state.value?.goToHelpVoiceEnabled ?? false) {
+      unawaited(
+        ref
+            .read(voiceDirectionsServiceProvider)
+            .speak('You have arrived at ${destination.name}'),
+      );
+    }
+    for (final facility in state.value?.facilities ?? const <Facility>[]) {
+      if (facility.name == destination.name) {
+        logInteraction(facility, FacilityInteraction.arrived);
+        break;
       }
     }
   }

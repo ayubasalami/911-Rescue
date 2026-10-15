@@ -39,6 +39,9 @@ abstract final class AnalyticsEvents {
   static const routeNavigationStarted = 'route_navigation_started';
   static const routeCleared = 'route_cleared';
 
+  /// Live tracking reached the destination. Param: `trip_minutes`.
+  static const routeArrived = 'route_arrived';
+
   /// Param: `enabled`.
   static const voiceGuidanceToggled = 'voice_guidance_toggled';
   static const routePlannerOpened = 'route_planner_opened';
