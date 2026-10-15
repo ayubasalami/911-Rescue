@@ -12,6 +12,7 @@ import '../../../data/repositories/facility_repository.dart';
 import '../../../data/services/analytics_service.dart';
 import '../../../data/services/google_sign_in_service.dart';
 import '../../../data/services/place_search_service.dart';
+import '../../core/view_model/theme_mode_view_model.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/facility_category_glyph.dart';
 import '../view_model/home_map_view_model.dart';
@@ -73,12 +74,6 @@ class HomeDrawer extends ConsumerWidget {
 
   static const _thresholdOptionsMinutes = [15, 30, 45, 60];
 
-  void _comingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$feature is coming soon.')));
-  }
-
   /// Native Google sign-in only, for now — the backend has no endpoint
   /// yet that turns the ID token into a session, so this just confirms the
   /// Google side works.
@@ -108,7 +103,9 @@ class HomeDrawer extends ConsumerWidget {
           padding: EdgeInsets.zero,
           children: [
             _Header(
-              onDarkMode: () => _comingSoon(context, 'Dark mode'),
+              onToggleTheme: () => ref
+                  .read(themeModeProvider.notifier)
+                  .toggle(Theme.of(context).brightness),
               onClose: () => Scaffold.of(context).closeDrawer(),
             ),
             const Divider(height: 1),
@@ -192,13 +189,14 @@ class HomeDrawer extends ConsumerWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.onDarkMode, required this.onClose});
+  const _Header({required this.onToggleTheme, required this.onClose});
 
-  final VoidCallback onDarkMode;
+  final VoidCallback onToggleTheme;
   final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
       child: Row(
@@ -235,9 +233,13 @@ class _Header extends StatelessWidget {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.dark_mode_outlined, size: 18),
-            onPressed: onDarkMode,
-            tooltip: 'Toggle dark mode',
+            // The web's sun/moon: the sun switches to light, the moon to dark.
+            icon: Icon(
+              isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+              size: 18,
+            ),
+            onPressed: onToggleTheme,
+            tooltip: isDark ? 'Switch to light mode' : 'Switch to dark mode',
             style: IconButton.styleFrom(
               side: BorderSide(color: context.palette.primary),
               shape: const CircleBorder(),

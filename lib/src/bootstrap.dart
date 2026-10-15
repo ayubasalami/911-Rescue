@@ -10,7 +10,9 @@ import '../firebase_options_staging.dart' as staging_firebase;
 import 'app.dart';
 import 'core/config/app_config.dart';
 import 'data/network/cookie_jar_provider.dart';
+import 'data/repositories/theme_repository.dart';
 import 'data/services/crash_reporting_service.dart';
+import 'ui/core/view_model/theme_mode_view_model.dart';
 
 /// dev and staging both live in the `rescue-staging` Firebase project (as
 /// separate apps, since their bundle IDs differ); prod has its own project.
@@ -43,12 +45,14 @@ Future<void> bootstrap(AppConfig config) async {
   );
   MapboxOptions.setAccessToken(config.mapboxAccessToken);
   final cookieJar = await createCookieJar();
+  final themeMode = await ThemeRepository().load();
   runApp(
     ProviderScope(
       overrides: [
         appConfigProvider.overrideWithValue(config),
         cookieJarProvider.overrideWithValue(cookieJar),
         crashReportingServiceProvider.overrideWithValue(crashReporting),
+        initialThemeModeProvider.overrideWithValue(themeMode),
       ],
       child: const App(),
     ),

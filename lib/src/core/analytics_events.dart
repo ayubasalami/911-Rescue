@@ -51,6 +51,9 @@ abstract final class AnalyticsEvents {
 
   /// Param: `enabled`.
   static const legendToggled = 'legend_toggled';
+
+  /// Param: `theme` (`light` / `dark`).
+  static const themeToggled = 'theme_toggled';
   static const triageChatOpened = 'triage_chat_opened';
 
   /// A Triage routing button. Params: `category`, `emergency`.

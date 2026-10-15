@@ -1664,14 +1664,14 @@ class _AnalysisPingState extends State<_AnalysisPing>
 }
 
 /// The web's `.map-loading` pill: "Analyzing…" with a spinner, frosted
-/// white with a blue border, at the top of the map.
+/// panel colour with a blue border, at the top of the map.
 class _AnalyzingPill extends StatelessWidget {
   const _AnalyzingPill();
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.85),
+      color: context.palette.backgroundSurface.withValues(alpha: 0.85),
       borderRadius: BorderRadius.circular(20),
       border: Border.all(color: context.palette.primary),
       boxShadow: [
