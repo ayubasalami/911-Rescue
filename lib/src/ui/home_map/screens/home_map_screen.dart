@@ -16,6 +16,8 @@ import '../../../data/models/geo_point.dart';
 import '../../../data/models/route_point.dart';
 import '../../../data/models/triage.dart';
 import '../../../data/services/analytics_service.dart';
+import '../../core/view_model/auth_view_model.dart';
+import '../../core/view_model/saved_facilities_view_model.dart';
 import '../../get_help/widgets/get_help_sheet.dart';
 import '../../triage_chat/widgets/triage_chat_sheet.dart';
 import '../../triage_chat/widgets/triage_entry_sheet.dart';
@@ -149,12 +151,6 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _cameraZoom.dispose();
     _searchFocusNode.dispose();
     super.dispose();
-  }
-
-  void _showComingSoon(String feature) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$feature is coming soon.')));
   }
 
   void _resetToDefaultView() => _mapController.flyTo(defaultMapCenter);
@@ -578,9 +574,35 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _viewModel.openRoutePlanner();
   }
 
-  void _saveFacility() {
-    _clearPopup();
-    _showComingSoon('Saving facilities');
+  /// Saves on the phone whether or not anyone is signed in — nobody should
+  /// have to sign in to bookmark a hospital mid-emergency — and to the
+  /// account too when signed in.
+  Future<void> _toggleSavedFacility(Facility facility) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final signedIn = ref.read(authViewModelProvider).value != null;
+    final saved = await ref
+        .read(savedFacilitiesViewModelProvider.notifier)
+        .toggle(facility);
+    ref
+        .read(analyticsServiceProvider)
+        .logEvent(
+          AnalyticsEvents.facilitySaved,
+          parameters: {'saved': '$saved', 'category': facility.category.name},
+        );
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            !saved
+                ? 'Removed from your saved facilities.'
+                : signedIn
+                ? '✓ Saved to your dashboard!'
+                : '✓ Saved on this phone. Sign in with Google to add it to '
+                      'your dashboard.',
+          ),
+        ),
+      );
   }
 
   /// "Map Route" on a facility in the Access Analysis sheet — routes to it
@@ -854,6 +876,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final state = homeMapAsync.value;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     unawaited(_mapController.setTheme(context.palette, dark: isDark));
+    // Watched here, not only in the popup, so a session restored at launch
+    // syncs straight away.
+    final savedFacilities =
+        ref.watch(savedFacilitiesViewModelProvider).value ?? const [];
     if (state != null) {
       unawaited(
         _mapController.syncFacilityPins(
@@ -1272,7 +1298,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                         ),
                         onGetDirections: () =>
                             _openPlannerTo(state.selectedFacility!),
-                        onSaveFacility: _saveFacility,
+                        saved: savedFacilities.any(
+                          (item) => item.name == state.selectedFacility!.name,
+                        ),
+                        onSaveFacility: () =>
+                            _toggleSavedFacility(state.selectedFacility!),
                         onClose: _clearPopup,
                       ),
                     ),

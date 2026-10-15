@@ -24,6 +24,9 @@ abstract final class AnalyticsEvents {
   /// Param: `category`.
   static const facilityViewed = 'facility_viewed';
 
+  /// Params: `saved` (`true` / `false`), `category`.
+  static const facilitySaved = 'facility_saved';
+
   /// Param: `source` = `drawer` | `route_planner`.
   static const searchResultSelected = 'search_result_selected';
 

@@ -18,6 +18,7 @@ class FacilityPopupCard extends StatelessWidget {
     required this.onGetDirections,
     required this.onSaveFacility,
     required this.onClose,
+    this.saved = false,
   });
 
   final Facility facility;
@@ -26,6 +27,9 @@ class FacilityPopupCard extends StatelessWidget {
   final VoidCallback onGetDirections;
   final VoidCallback onSaveFacility;
   final VoidCallback onClose;
+
+  /// Already in the saved facilities — the button then unsaves.
+  final bool saved;
 
   @override
   Widget build(BuildContext context) {
@@ -214,7 +218,7 @@ class FacilityPopupCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: AppButton(
-                label: '☆ Save Facility',
+                label: saved ? '⭐ Saved' : '☆ Save Facility',
                 onPressed: onSaveFacility,
                 variant: AppButtonVariant.warning,
                 filled: false,
