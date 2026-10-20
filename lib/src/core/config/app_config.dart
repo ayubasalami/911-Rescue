@@ -9,6 +9,7 @@ class AppConfig {
     required this.apiBaseUrl,
     required this.mapboxAccessToken,
     required this.googleServerClientId,
+    this.appleSignInEnabled = false,
   });
 
   final AppEnvironment environment;
@@ -21,6 +22,13 @@ class AppConfig {
   /// issues the sign-in ID token for this client, and it's the audience
   /// the backend checks.
   final String googleServerClientId;
+
+  /// Shows "Sign in with Apple" (iOS only). Off for public prod builds
+  /// until the backend's Apple credentials are live: before then the
+  /// sign-in's one-time code can't be exchanged, so the account could never
+  /// have its Apple token revoked on deletion. Prod turns it on only with
+  /// `--dart-define=APPLE_SIGN_IN=true`, for internal test builds.
+  final bool appleSignInEnabled;
 }
 
 final appConfigProvider = Provider<AppConfig>((ref) {

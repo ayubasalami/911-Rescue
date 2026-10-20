@@ -61,14 +61,18 @@ abstract final class AnalyticsEvents {
   /// Param: `theme` (`light` / `dark`).
   static const themeToggled = 'theme_toggled';
 
-  /// Firebase's standard sign-in event. Param: `method` (`google`).
+  /// Firebase's standard sign-in event. Param: `method` (`google` /
+  /// `apple`).
   static const login = 'login';
   static const logout = 'logout';
 
-  /// Param: `reason` = `google` (Google's own sign-in failed) | `rejected`
-  /// (backend 401) | `google_unreachable` (backend 503) | `network` |
-  /// `server`.
+  /// Param: `reason` = `google` / `apple` (the provider's own sign-in
+  /// failed) | `rejected` (backend 401) | `google_unreachable` /
+  /// `apple_unreachable` (backend 503) | `network` | `server`.
   static const loginFailed = 'login_failed';
+
+  /// The user deleted their account.
+  static const accountDeleted = 'account_deleted';
 
   /// Param: `action` = `view` (a row tap) | `navigate` | `remove`.
   static const dashboardAction = 'dashboard_action';

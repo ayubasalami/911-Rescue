@@ -36,6 +36,11 @@ class SavedFacilitiesViewModel extends AsyncNotifier<List<SavedFacility>> {
     state = AsyncData(await _repository.sync(email));
   }
 
+  /// After the account is deleted — see
+  /// [SavedFacilitiesRepository.forgetAccount].
+  Future<void> forgetAccount() async =>
+      state = AsyncData(await _repository.forgetAccount());
+
   bool isSaved(Facility facility) =>
       state.value?.any((item) => item.name == facility.name) ?? false;
 

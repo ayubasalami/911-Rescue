@@ -6,6 +6,7 @@ import '../../core/config/app_config.dart';
 import '../../core/result.dart';
 import '../models/app_user.dart';
 import '../network/cookie_jar_provider.dart';
+import '../services/apple_sign_in_service.dart';
 import '../services/auth_service.dart';
 import '../services/google_sign_in_service.dart';
 
@@ -15,6 +16,7 @@ final authRepositoryProvider = Provider<AuthRepository>(
     ref.watch(googleSignInServiceProvider),
     ref.watch(cookieJarProvider),
     Uri.parse(ref.watch(appConfigProvider).apiBaseUrl),
+    apple: ref.watch(appleSignInServiceProvider),
   ),
 );
 
@@ -28,7 +30,7 @@ class SignedIn extends SignInOutcome {
   final AppUser user;
 }
 
-/// The user closed Google's account picker — show nothing.
+/// The user closed Google's picker or Apple's sheet — show nothing.
 class SignInCancelled extends SignInOutcome {
   const SignInCancelled();
 }
@@ -41,13 +43,20 @@ class SignInFailed extends SignInOutcome {
   final String reason;
 }
 
-/// Native Google sign-in, exchanged for the backend's `session` cookie —
-/// the same session the web login creates.
+/// Native Google or Apple sign-in, exchanged for the backend's `session`
+/// cookie — the same session the web login creates.
 class AuthRepository {
-  AuthRepository(this._service, this._google, this._cookies, this._apiHost);
+  AuthRepository(
+    this._service,
+    this._google,
+    this._cookies,
+    this._apiHost, {
+    this._apple = const AppleSignInService(),
+  });
 
   final AuthService _service;
   final GoogleSignInService _google;
+  final AppleSignInService _apple;
   final CookieJar _cookies;
   final Uri _apiHost;
 
@@ -74,21 +83,61 @@ class AuthRepository {
     // Forget the Google account too, so the next attempt shows the picker
     // again rather than silently reusing the one that just failed.
     await _google.signOut().catchError((Object _) {});
-    return switch (failure) {
-      // The backend couldn't reach Google to check the token — not the
-      // user's fault, and not a credentials problem.
-      ServerFailure(statusCode: 503) => const SignInFailed(
-        'Couldn\'t reach Google to confirm your sign-in. Please try again.',
-        reason: 'google_unreachable',
-      ),
-      UnauthorizedFailure() => const SignInFailed(
-        'Google sign-in was rejected. Please try again.',
-        reason: 'rejected',
-      ),
-      NetworkFailure() ||
-      TimeoutFailure() => SignInFailed(failure.userMessage, reason: 'network'),
-      _ => SignInFailed(failure.userMessage, reason: 'server'),
+    return _failed(failure, provider: 'Google');
+  }
+
+  /// Sign in with Apple: Apple's native sheet, then the backend's
+  /// `/auth/mobile/apple`, which sets the same session as Google.
+  Future<SignInOutcome> signInWithApple() async {
+    final AppleIdentity identity;
+    switch (await _apple.signIn()) {
+      case AppleSignInSucceeded(identity: final picked):
+        identity = picked;
+      case AppleSignInCancelled():
+        return const SignInCancelled();
+      case AppleSignInFailed(:final message):
+        return SignInFailed(message, reason: 'apple');
+    }
+    return switch (await _service.signInWithApple(
+      identityToken: identity.identityToken,
+      authorizationCode: identity.authorizationCode,
+      fullName: identity.fullName,
+    )) {
+      Ok(:final value) => SignedIn(value),
+      Err(:final failure) => _failed(failure, provider: 'Apple'),
     };
+  }
+
+  /// [provider] is "Google" or "Apple".
+  SignInFailed _failed(AppFailure failure, {required String provider}) =>
+      switch (failure) {
+        // The backend couldn't reach the provider to check the token — not
+        // the user's fault, and not a credentials problem.
+        ServerFailure(statusCode: 503) => SignInFailed(
+          'Couldn\'t reach $provider to confirm your sign-in. Please try '
+          'again.',
+          reason: '${provider.toLowerCase()}_unreachable',
+        ),
+        UnauthorizedFailure() => SignInFailed(
+          '$provider sign-in was rejected. Please try again.',
+          reason: 'rejected',
+        ),
+        NetworkFailure() || TimeoutFailure() => SignInFailed(
+          failure.userMessage,
+          reason: 'network',
+        ),
+        _ => SignInFailed(failure.userMessage, reason: 'server'),
+      };
+
+  /// Deletes the account on the server (which also revokes any Apple
+  /// token and ends the session), then clears it here too.
+  Future<Result<void>> deleteAccount() async {
+    final result = await _service.deleteAccount();
+    if (result.isOk) {
+      await _cookies.delete(_apiHost);
+      await _google.signOut().catchError((Object _) {});
+    }
+    return result;
   }
 
   /// Ends the session everywhere it lives: the server, the cookie jar and

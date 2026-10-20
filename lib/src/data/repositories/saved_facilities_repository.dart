@@ -95,6 +95,19 @@ class SavedFacilitiesRepository {
     return store.items;
   }
 
+  /// The account was deleted: keep the phone's saves, but as the phone's
+  /// own again — unsynced, with no account and nothing pending to remove.
+  Future<List<SavedFacility>> forgetAccount() async {
+    final store = await _read();
+    store.items = [
+      for (final item in store.items) item.copyWith(synced: false),
+    ];
+    store.pendingUnsaves.clear();
+    store.syncedAccount = null;
+    await _write(store);
+    return store.items;
+  }
+
   /// Brings the phone and [account] in step: replays pending removals and
   /// unsynced saves (every save, on the account's first sync), then takes
   /// the server's list. Saves that failed to upload are kept for next time.

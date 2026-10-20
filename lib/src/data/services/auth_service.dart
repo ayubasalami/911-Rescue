@@ -27,6 +27,32 @@ class AuthService {
     ),
   );
 
+  /// Exchanges Apple's identity token (and one-time authorization code,
+  /// which the backend trades for a revocable refresh token) for the same
+  /// session. [fullName] only exists on the first Apple sign-in; the
+  /// backend keeps it. Status codes as [signInWithGoogle].
+  Future<Result<AppUser>> signInWithApple({
+    required String identityToken,
+    required String authorizationCode,
+    String? fullName,
+  }) => _api.post(
+    '/auth/mobile/apple',
+    body: {
+      'identity_token': identityToken,
+      'authorization_code': authorizationCode,
+      'full_name': ?fullName,
+    },
+    parse: (body) => AppUser.fromJson(
+      JsonReader(body! as Map<String, dynamic>).object('user'),
+    ),
+  );
+
+  /// Deletes the signed-in account — profile, saved facilities and history
+  /// — revokes any Apple token, and ends the session. 401 when not signed
+  /// in.
+  Future<Result<void>> deleteAccount() =>
+      _api.post('/auth/delete_account', parse: (_) {});
+
   /// The signed-in user, or null when there's no (valid) session.
   Future<Result<AppUser?>> status() => _api.get(
     '/api/user_status',

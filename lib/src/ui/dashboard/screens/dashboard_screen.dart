@@ -354,7 +354,99 @@ class _DashboardBody extends ConsumerWidget {
                     ),
                 ],
         ),
+        const _DeleteAccount(),
       ],
+    );
+  }
+}
+
+/// Deleting the account from inside the app — both stores require it for
+/// any app that creates accounts.
+class _DeleteAccount extends ConsumerStatefulWidget {
+  const _DeleteAccount();
+
+  @override
+  ConsumerState<_DeleteAccount> createState() => _DeleteAccountState();
+}
+
+class _DeleteAccountState extends ConsumerState<_DeleteAccount> {
+  var _deleting = false;
+
+  Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete your account?'),
+        content: const Text(
+          'This permanently deletes your 911 Rescue account, the facilities '
+          'saved to it and your activity history. Facilities saved on this '
+          'phone stay on this phone. This can\'t be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            style: TextButton.styleFrom(
+              foregroundColor: context.palette.textSecondary,
+            ),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: context.palette.danger,
+            ),
+            child: const Text(
+              'Delete account',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _deleting = true);
+    final error = await ref
+        .read(authViewModelProvider.notifier)
+        .deleteAccount();
+    if (!mounted) return;
+    setState(() => _deleting = false);
+    if (error != null) {
+      messenger.showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Your account has been deleted.')),
+    );
+    context.pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Column(
+        children: [
+          OutlinedButton(
+            onPressed: _deleting ? null : _delete,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: context.palette.danger,
+              side: BorderSide(color: context.palette.danger),
+            ),
+            child: Text(_deleting ? 'Deleting…' : 'Delete account'),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Removes your account, saved facilities and history.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              color: context.palette.textSecondary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

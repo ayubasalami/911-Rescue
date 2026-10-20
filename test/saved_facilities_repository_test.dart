@@ -80,4 +80,21 @@ void main() {
     expect(_names(await repository.sync('a@b.com')), isEmpty);
     expect(service.unsaves, ['LASUTH']);
   });
+
+  test('after deleting the account the phone keeps its saves', () async {
+    final service = _FakeService();
+    final repository = SavedFacilitiesRepository(service);
+    await repository.save(const SavedFacility(name: 'LASUTH'), signedIn: true);
+    await repository.sync('a@b.com');
+
+    final kept = await repository.forgetAccount();
+    expect(_names(kept), ['LASUTH']);
+    expect(kept.single.synced, isFalse);
+
+    // Signing in again replays it, as for any first sync.
+    service.server.clear();
+    service.saves.clear();
+    await repository.sync('a@b.com');
+    expect(service.saves, ['LASUTH']);
+  });
 }

@@ -10,6 +10,7 @@ void main() async {
       mapboxAccessToken: String.fromEnvironment('MAPBOX_ACCESS_TOKEN'),
       googleServerClientId:
           '1074507137942-kajb6ucl7anjl0bliv34r0357h4pnjm2.apps.googleusercontent.com',
+      appleSignInEnabled: bool.fromEnvironment('APPLE_SIGN_IN'),
     ),
   );
 }
