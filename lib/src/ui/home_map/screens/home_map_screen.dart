@@ -267,6 +267,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _searchFocusNode.requestFocus();
   }
 
+  void _cancelSearch() {
+    _searchFocusNode.unfocus();
+    _showInSheet(HomeTab.info, size: 0);
+  }
+
   /// Discover has no idle state: opening it runs the analysis from the
   /// user's location, for the panel only — the map changes when they pick
   /// something there, like Map Route. An analysis already on the map keeps
@@ -1260,10 +1265,6 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final mapAnalysis = (state?.analysisOnMap ?? false)
         ? state?.activeAnalysis
         : null;
-    // The most the legend rides up with the sheet.
-    final sheetRideLimit =
-        (MediaQuery.sizeOf(context).height - 64 - viewPadding.bottom) *
-        homeSheetHalfSize;
 
     return Scaffold(
       bottomNavigationBar: HomeTabBar(
@@ -1305,25 +1306,22 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               ),
             ),
           if (state?.showLegend ?? true)
-            ValueListenableBuilder<double>(
-              valueListenable: _sheetHeight,
-              builder: (context, height, _) => Positioned(
-                // The web's mobile `.info.legend`: 10px in, 160px up — clear
-                // of the bottom-docked directions card, and above the sheet.
-                left: 10,
-                bottom: math.max(160, math.min(height, sheetRideLimit) + 34),
-                child: MapLegend(
-                  mode:
-                      mapAnalysis?.mode ??
-                      state?.selectedTransportMode ??
-                      TransportMode.driving,
-                  bandMinutes: [
-                    for (final ring
-                        in mapAnalysis?.isochroneRings ??
-                            const <IsochroneRing>[])
-                      ring.minutes,
-                  ]..sort(),
-                ),
+            Positioned(
+              // The web's mobile `.info.legend`: 10px in, 160px up — clear
+              // of the bottom-docked directions card. Fixed, and under the
+              // sheet, which hides it as it opens.
+              left: 10,
+              bottom: 160,
+              child: MapLegend(
+                mode:
+                    mapAnalysis?.mode ??
+                    state?.selectedTransportMode ??
+                    TransportMode.driving,
+                bandMinutes: [
+                  for (final ring
+                      in mapAnalysis?.isochroneRings ?? const <IsochroneRing>[])
+                    ring.minutes,
+                ]..sort(),
               ),
             ),
           Positioned(
@@ -1861,6 +1859,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           scrollController: scrollController,
           focusNode: _searchFocusNode,
           onSelectResult: _selectFacility,
+          onCancel: _cancelSearch,
         ),
       };
 

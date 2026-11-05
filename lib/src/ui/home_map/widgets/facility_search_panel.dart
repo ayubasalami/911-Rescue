@@ -1,4 +1,4 @@
-import 'dart:async' show Timer;
+import 'dart:async' show Timer, unawaited;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +9,7 @@ import '../../../data/models/facility.dart';
 import '../../../data/repositories/facility_repository.dart';
 import '../../../data/services/analytics_service.dart';
 import '../../../data/services/place_search_service.dart';
+import '../../core/widgets/app_filter_chip.dart';
 import '../../core/widgets/facility_category_glyph.dart';
 import 'map_legend.dart' show FacilityCategoryLegend;
 
@@ -19,11 +20,13 @@ class FacilitySearchPanel extends ConsumerStatefulWidget {
     super.key,
     required this.scrollController,
     required this.onSelectResult,
+    required this.onCancel,
     this.focusNode,
   });
 
   final ScrollController scrollController;
   final ValueChanged<Facility> onSelectResult;
+  final VoidCallback onCancel;
   final FocusNode? focusNode;
 
   @override
@@ -112,6 +115,20 @@ class _FacilitySearchPanelState extends ConsumerState<FacilitySearchPanel> {
     widget.onSelectResult(facility);
   }
 
+  /// Nothing typed that could be searched yet, and nothing to show for it.
+  bool get _showEmptyState =>
+      _results == null &&
+      !_loading &&
+      !_searchFailed &&
+      _controller.text.trim().length < 2;
+
+  void _searchSuggestion(String suggestion) {
+    _debounce?.cancel();
+    _controller.text = suggestion;
+    _controller.selection = TextSelection.collapsed(offset: suggestion.length);
+    unawaited(_search(suggestion));
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -120,18 +137,28 @@ class _FacilitySearchPanelState extends ConsumerState<FacilitySearchPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Search',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Search',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ),
+              TextButton(
+                onPressed: widget.onCancel,
+                child: const Text('Cancel'),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
           TextField(
             controller: _controller,
             focusNode: widget.focusNode,
             onChanged: _onChanged,
             onSubmitted: _search,
             decoration: InputDecoration(
-              hintText: 'Facilities name or address',
+              hintText: 'Facility name or address',
               filled: true,
               fillColor: context.palette.backgroundCanvas,
               contentPadding: const EdgeInsets.symmetric(
@@ -154,6 +181,8 @@ class _FacilitySearchPanelState extends ConsumerState<FacilitySearchPanel> {
                   : null,
             ),
           ),
+          if (_showEmptyState)
+            _SearchEmptyState(onSuggestionTap: _searchSuggestion),
           if (_searchFailed) ...[
             const SizedBox(height: 6),
             Text(
@@ -236,6 +265,92 @@ class _FacilitySearchPanelState extends ConsumerState<FacilitySearchPanel> {
                 ),
               ),
         ],
+      ),
+    );
+  }
+}
+
+/// Shown before anything is searched: what the field takes, and a few
+/// searches to start from.
+class _SearchEmptyState extends StatelessWidget {
+  const _SearchEmptyState({required this.onSuggestionTap});
+
+  final ValueChanged<String> onSuggestionTap;
+
+  static const _suggestions = ['General Hospital', 'Police Station', 'Ikeja'];
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Padding(
+      padding: const EdgeInsets.only(top: 32),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: Column(
+            children: [
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: palette.primary.withValues(alpha: 0.08),
+                ),
+                alignment: Alignment.center,
+                child: Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: palette.primary.withValues(alpha: 0.16),
+                  ),
+                  child: Icon(Icons.search, size: 30, color: palette.primary),
+                ),
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Find a facility or place',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Search by a facility\'s name or an address to see it on '
+                'the map.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: palette.textSecondary,
+                  fontSize: 13,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Text(
+                'TRY SEARCHING',
+                style: TextStyle(
+                  color: palette.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final suggestion in _suggestions)
+                    AppFilterChip(
+                      label: suggestion,
+                      selected: false,
+                      onTap: () => onSuggestionTap(suggestion),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
