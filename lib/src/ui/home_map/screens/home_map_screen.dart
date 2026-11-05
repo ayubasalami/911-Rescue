@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show Timer, unawaited;
 import 'dart:math' as math;
 import 'dart:io' show Platform;
 
@@ -27,19 +27,22 @@ import '../../dashboard/screens/dashboard_screen.dart';
 import '../../core/view_model/saved_facilities_view_model.dart';
 import '../../get_help/widgets/get_help_sheet.dart';
 import '../../triage_chat/widgets/triage_chat_sheet.dart';
-import '../../triage_chat/widgets/triage_entry_sheet.dart';
 import '../controllers/map_annotation_controller.dart';
 import '../view_model/home_map_view_model.dart';
 import '../widgets/access_analysis_sheet.dart';
 import '../widgets/access_origin_popup.dart';
 import '../widgets/calculating_route_overlay.dart';
-import '../widgets/change_commute_mode_card.dart';
+import '../widgets/discover_tab.dart';
 import '../widgets/facility_filter_row.dart';
 import '../widgets/facility_popup_card.dart';
 import '../widgets/facility_info_dialog.dart';
 import '../widgets/go_to_help_card.dart';
 import '../widgets/go_to_help_mode_bar.dart';
-import '../widgets/home_drawer.dart';
+import '../widgets/facility_search_panel.dart';
+import '../widgets/home_sheet.dart';
+import '../widgets/home_tab_bar.dart';
+import '../widgets/info_tab.dart';
+import '../widgets/profile_tab.dart';
 import '../widgets/how_to_use_dialog.dart';
 import '../widgets/home_map_header.dart';
 import '../widgets/map_control_button.dart';
@@ -51,7 +54,6 @@ import '../widgets/route_planner_card.dart';
 import '../widgets/sos_action_menu.dart';
 import '../widgets/sos_fab.dart';
 import '../widgets/turn_by_turn_sheet.dart';
-import '../widgets/view_results_button.dart';
 import '../widgets/zoom_in_hint.dart';
 
 // mapbox_maps_flutter renders a native platform view that flutter_test can't
@@ -72,7 +74,18 @@ class HomeMapScreen extends ConsumerStatefulWidget {
 /// [MapAnnotationController] for why the split is drawn there.
 class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   final _mapController = MapAnnotationController();
-  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _sheetController = DraggableScrollableController();
+
+  /// What the home sheet shows; null for search, which isn't a tab.
+  HomeTab? _tab = HomeTab.info;
+
+  /// While a route is on the map its card takes the sheet's place, until a
+  /// tab is tapped. Kept mounted so Chat keeps its conversation.
+  bool _sheetHidden = false;
+
+  /// The sheet's height, which the SOS button and legend ride on.
+  final _sheetHeight = ValueNotifier<double>(0);
+  Timer? _bottomChromeTimer;
 
   /// The on-screen anchor for whichever popup is showing (origin or
   /// facility selection, from [HomeMapState]) — a derived pixel position,
@@ -167,11 +180,104 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _popupAnchor.dispose();
     _analysisPingAnchor.dispose();
     _routeMarkerAnchor.dispose();
+    _sheetController.dispose();
+    _sheetHeight.dispose();
+    _bottomChromeTimer?.cancel();
     _pingActive.dispose();
     _cameraZoom.dispose();
     _mapBearing.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _onSheetHeightChanged(double height) {
+    if (_sheetHidden) return;
+    _sheetHeight.value = height;
+    // Over a route the card is what's left once the sheet is dragged away.
+    final routeActive =
+        ref.read(homeMapViewModelProvider).value?.goToHelpRoute != null;
+    if (routeActive && height <= homeSheetPeekHeight + 1) {
+      _hideSheet();
+      return;
+    }
+    _syncBottomChrome();
+  }
+
+  void _syncBottomChrome() {
+    _bottomChromeTimer?.cancel();
+    _bottomChromeTimer = Timer(const Duration(milliseconds: 150), () {
+      if (!mounted) return;
+      unawaited(_mapController.setBottomChromeInset(_sheetHeight.value));
+    });
+  }
+
+  void _hideSheet() {
+    setState(() => _sheetHidden = true);
+    _sheetHeight.value = 0;
+    _syncBottomChrome();
+  }
+
+  /// [size] is a fraction of the map area; 0 and 1 stop at the sheet's
+  /// collapsed and fully open heights.
+  void _moveSheet(double size) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_sheetController.isAttached) return;
+      unawaited(
+        _sheetController.animateTo(
+          size,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        ),
+      );
+    });
+  }
+
+  void _showInSheet(HomeTab? tab, {double size = homeSheetHalfSize}) {
+    setState(() {
+      _tab = tab;
+      _sheetHidden = false;
+    });
+    _moveSheet(size);
+  }
+
+  void _onTabTapped(HomeTab tab) {
+    if (tab == _tab && !_sheetHidden) {
+      final expanded =
+          _sheetController.isAttached &&
+          _sheetController.pixels > homeSheetPeekHeight + 1;
+      _moveSheet(expanded ? 0 : homeSheetHalfSize);
+      return;
+    }
+    final analytics = ref.read(analyticsServiceProvider);
+    analytics.logEvent(
+      AnalyticsEvents.homeTabOpened,
+      parameters: {'tab': tab.name},
+    );
+    if (tab == HomeTab.chat) {
+      analytics.logEvent(AnalyticsEvents.triageChatOpened);
+    }
+    // The conversation needs the room, especially once the keyboard is up.
+    _showInSheet(tab, size: tab == HomeTab.chat ? 1 : homeSheetHalfSize);
+    if (tab == HomeTab.discover) unawaited(_runDiscoverAnalysis());
+  }
+
+  void _openSearch() {
+    ref.read(analyticsServiceProvider).logEvent(AnalyticsEvents.searchOpened);
+    _showInSheet(null, size: 1);
+    _searchFocusNode.requestFocus();
+  }
+
+  /// Discover has no idle state: opening it runs the analysis from the
+  /// user's location, for the panel only — the map changes when they pick
+  /// something there, like Map Route. An analysis already on the map keeps
+  /// showing, and a route stays, with no results to run into it.
+  Future<void> _runDiscoverAnalysis() async {
+    final state = ref.read(homeMapViewModelProvider).value;
+    if (state == null || state.goToHelpRoute != null) return;
+    if (state.activeAnalysis != null && state.analysisOnMap) return;
+    final origin = await _viewModel.resolveDiscoverOrigin();
+    if (!mounted || origin == null) return;
+    await _viewModel.runAnalysis(origin, followsUser: true, onMap: false);
   }
 
   void _resetToDefaultView() => _mapController.flyTo(defaultMapCenter);
@@ -631,54 +737,6 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     }
   }
 
-  void _openTriageEntry() {
-    _viewModel.closeSosMenu();
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 100),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadii.lg),
-        ),
-        child: TriageEntrySheet(
-          onCall112: () {
-            Navigator.of(dialogContext).pop();
-            _call112('triage');
-          },
-          onReportIncident: () {
-            Navigator.of(dialogContext).pop();
-            _openTriageChat();
-          },
-        ),
-      ),
-    );
-  }
-
-  void _openTriageChat() {
-    ref
-        .read(analyticsServiceProvider)
-        .logEvent(AnalyticsEvents.triageChatOpened);
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 80),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadii.lg),
-        ),
-        child: TriageChatSheet(
-          onNavigateTo: (navigation) {
-            Navigator.of(dialogContext).pop();
-            unawaited(_navigateFromTriage(navigation));
-          },
-          onCall112: () {
-            Navigator.of(dialogContext).pop();
-            unawaited(_call112('triage'));
-          },
-        ),
-      ),
-    );
-  }
-
   /// A Triage routing button — mirrors the web: the map is cleared, the
   /// facility is picked from a live GPS fix and routed to with the same
   /// card, overlay and line as every other route. With no GPS fix the
@@ -742,7 +800,6 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// shows that facility on the map, a saved facility's Navigate opens
   /// the Route Planner to it — the web's `/?view=` and `/?nav=`.
   Future<void> _openDashboard() async {
-    _scaffoldKey.currentState?.closeDrawer();
     final request = await context.push<DashboardRequest>(AppRoute.dashboard);
     if (request == null || !mounted) return;
     final facility = _facilityFor(request);
@@ -914,6 +971,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     bool openSheet = true,
     bool followsUser = false,
   }) async {
+    if (_tab != HomeTab.discover || _sheetHidden) {
+      _showInSheet(HomeTab.discover);
+    }
     await _mapController.clearIsochroneAndRoute();
     if (!mounted) return;
     _analysisPingPoint = origin;
@@ -931,11 +991,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   }
 
   Future<void> _changeCommuteMode(TransportMode mode) async {
-    final origin = ref
-        .read(homeMapViewModelProvider)
-        .value
-        ?.activeAnalysisOrigin;
-    if (origin == null) {
+    final state = ref.read(homeMapViewModelProvider).value;
+    final origin = state?.activeAnalysisOrigin;
+    if (origin == null || !(state?.analysisOnMap ?? false)) {
       await _viewModel.changeCommuteMode(mode);
       return;
     }
@@ -968,10 +1026,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final smallest = analysis.isochroneRings.reduce(
       (a, b) => a.minutes <= b.minutes ? a : b,
     );
-    await _mapController.flyToBounds(smallest.points, padding: 40, maxZoom: 17);
+    await _mapController.flyToBounds(
+      smallest.points,
+      padding: 40,
+      bottomPadding: _sheetHeight.value,
+      maxZoom: 17,
+    );
   }
 
-  /// The sidebar/floating "clear" button — tears down whatever's currently
+  /// The map's "clear" button — tears down whatever's currently
   /// active (analysis, Go to Help, a selected facility or dropped pin, the
   /// SOS menu) and recenters the map on the user's live location, rather
   /// than just clearing the Accessibility Analyzer the way this used to.
@@ -985,6 +1048,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _viewModel.closeRoutePlanner();
     _popupAnchor.value = null;
     await _mapController.clearIsochroneAndRoute();
+    if (!mounted) return;
+    if (_tab == HomeTab.discover) setState(() => _tab = HomeTab.info);
+    _moveSheet(0);
 
     final point = await _viewModel.currentUserLocation();
     if (point == null || !mounted) return;
@@ -1131,6 +1197,26 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     }
 
     ref.listen(homeMapViewModelProvider, (previous, next) {
+      final hadRoute = previous?.value?.goToHelpRoute != null;
+      final hasRoute = next.value?.goToHelpRoute != null;
+      if (hasRoute && !hadRoute) {
+        _hideSheet();
+      } else if (hadRoute && !hasRoute) {
+        // Back to the peek, without sliding up over the map first.
+        if (_sheetController.isAttached) _sheetController.jumpTo(0);
+        setState(() => _sheetHidden = false);
+        // The route cleared the results Discover was showing.
+        if (_tab == HomeTab.discover) unawaited(_runDiscoverAnalysis());
+      }
+      // A popup or the planner needs the map the sheet would cover.
+      final opened =
+          (next.value?.originSelection != null &&
+              previous?.value?.originSelection == null) ||
+          (next.value?.selectedFacility != null &&
+              previous?.value?.selectedFacility == null) ||
+          ((next.value?.showRoutePlanner ?? false) &&
+              !(previous?.value?.showRoutePlanner ?? false));
+      if (opened && !hasRoute) _moveSheet(0);
       if (next.value?.goToHelpRoute == null && _routeMarkerPoint != null) {
         _closeRouteMarkerPopup();
       }
@@ -1163,25 +1249,26 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       }
     });
 
-    final showFloatingAnalysisControls =
-        state?.activeAnalysis != null && state?.showAnalysisSheet != true;
-
     // The map itself is full-bleed behind the status bar/notch on purpose —
     // only the floating controls need to stay clear of it, so they get
     // nudged down/up by the system inset instead of the whole body being
     // wrapped in a SafeArea (which would inset the map too).
     final viewPadding = MediaQuery.paddingOf(context);
     final topInset = viewPadding.top;
-    final bottomInset = viewPadding.bottom;
+    final routeActive =
+        state?.goToHelpRoute != null && state?.goToHelpDestination != null;
+    final mapAnalysis = (state?.analysisOnMap ?? false)
+        ? state?.activeAnalysis
+        : null;
+    // The most the legend rides up with the sheet.
+    final sheetRideLimit =
+        (MediaQuery.sizeOf(context).height - 64 - viewPadding.bottom) *
+        homeSheetHalfSize;
 
     return Scaffold(
-      key: _scaffoldKey,
-      drawer: HomeDrawer(
-        onUseCurrentLocation: _recenterOnUser,
-        onClearMap: _clearActiveFeature,
-        onSelectSearchResult: _selectFacility,
-        onOpenDashboard: _openDashboard,
-        searchFocusNode: _searchFocusNode,
+      bottomNavigationBar: HomeTabBar(
+        selected: _sheetHidden ? null : _tab,
+        onTap: _onTabTapped,
       ),
       body: Stack(
         children: [
@@ -1218,35 +1305,30 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               ),
             ),
           if (state?.showLegend ?? true)
-            Positioned(
-              // The web's mobile `.info.legend`: 10px in, 160px up — clear
-              // of the bottom-docked directions card.
-              left: 10,
-              bottom: 160 + bottomInset,
-              child: MapLegend(
-                mode:
-                    state?.activeAnalysis?.mode ??
-                    state?.selectedTransportMode ??
-                    TransportMode.driving,
-                bandMinutes: [
-                  for (final ring
-                      in state?.activeAnalysis?.isochroneRings ??
-                          const <IsochroneRing>[])
-                    ring.minutes,
-                ]..sort(),
+            ValueListenableBuilder<double>(
+              valueListenable: _sheetHeight,
+              builder: (context, height, _) => Positioned(
+                // The web's mobile `.info.legend`: 10px in, 160px up — clear
+                // of the bottom-docked directions card, and above the sheet.
+                left: 10,
+                bottom: math.max(160, math.min(height, sheetRideLimit) + 34),
+                child: MapLegend(
+                  mode:
+                      mapAnalysis?.mode ??
+                      state?.selectedTransportMode ??
+                      TransportMode.driving,
+                  bandMinutes: [
+                    for (final ring
+                        in mapAnalysis?.isochroneRings ??
+                            const <IsochroneRing>[])
+                      ring.minutes,
+                  ]..sort(),
+                ),
               ),
             ),
           Positioned(
             top: 6 + topInset,
             left: 16,
-            child: MapControlButton(
-              icon: Icon(Icons.menu, color: context.palette.primary, size: 20),
-              onTap: () => _scaffoldKey.currentState?.openDrawer(),
-            ),
-          ),
-          Positioned(
-            top: 6 + topInset,
-            left: 68,
             right: 16,
             child: const HomeMapHeader(),
           ),
@@ -1349,10 +1431,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     color: context.palette.textPrimary,
                     size: _controlIconSize,
                   ),
-                  onTap: () {
-                    _scaffoldKey.currentState?.openDrawer();
-                    _searchFocusNode.requestFocus();
-                  },
+                  onTap: _openSearch,
                 ),
                 const SizedBox(height: 8),
                 MapControlButton(
@@ -1422,49 +1501,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               ],
             ),
           ),
-          Positioned(
-            right: 16,
-            bottom: 16 + bottomInset,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (state?.showSosMenu ?? false) ...[
-                  SosActionMenu(
-                    onReportIncident: _openTriageEntry,
-                    onCallForHelp: _call112,
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                // Stays mounted in both states so it can spin into the ✕.
-                SosFab(
-                  open: state?.showSosMenu ?? false,
-                  onPressed: _viewModel.toggleSosMenu,
-                ),
-              ],
-            ),
-          ),
-          if (showFloatingAnalysisControls)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 16 + bottomInset,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (state!.showChangeModeCard) ...[
-                    ChangeCommuteModeCard(
-                      selectedMode: state.selectedTransportMode,
-                      onModeSelected: _changeCommuteMode,
-                      onClose: _viewModel.dismissChangeModeCard,
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  ViewResultsButton(onTap: _viewModel.reopenAnalysisSheet),
-                ],
-              ),
-            ),
+          // Fixed, and under the sheet: it hides when the sheet opens over
+          // it. Above the collapsed sheet, or behind the route card, which
+          // has its own SOS and Call 112.
+          _sosButton(state, routeActive ? 16 : homeSheetPeekHeight + 16),
           // Always resolves to a Positioned (even the "nothing to show" case)
           // rather than a bare SizedBox: a Stack with even one genuinely
           // non-positioned child sizes itself to that child instead of
@@ -1498,7 +1538,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       : Alignment.center,
                   child: Padding(
                     padding: EdgeInsets.only(
-                      bottom: pinging ? 16 + bottomInset : 0,
+                      bottom: pinging ? homeSheetPeekHeight + 16 : 0,
                     ),
                     child: child,
                   ),
@@ -1622,7 +1662,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               // only so it doesn't stretch absurdly on tablets.
               left: 8,
               right: 8,
-              bottom: 8 + bottomInset,
+              bottom: 8,
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 480),
@@ -1665,7 +1705,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             ),
           ],
           if (state != null &&
-              state.activeAnalysis != null &&
+              mapAnalysis != null &&
               state.analysisRoute != null &&
               state.goToHelpRoute == null &&
               !state.analysisRouteChipDismissed)
@@ -1676,10 +1716,26 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               child: RouteActiveChip(
                 destinationName: state.analysisRouteName ?? 'Nearest facility',
                 route: state.analysisRoute!,
-                mode: state.activeAnalysis!.mode,
+                mode: mapAnalysis.mode,
                 onClose: _viewModel.dismissAnalysisRouteChip,
               ),
             ),
+          // Keyed: the optional overlays before it come and go, and without
+          // a key the Stack can rebuild the sheet instead of keeping it, which
+          // attaches its controller twice and loses Chat's conversation.
+          Positioned.fill(
+            key: const ValueKey('home-sheet'),
+            child: Offstage(
+              offstage: _sheetHidden,
+              child: HomeSheet(
+                controller: _sheetController,
+                topInset: topInset,
+                onHeightChanged: _onSheetHeightChanged,
+                builder: (context, scrollController) =>
+                    _sheetContent(state, scrollController),
+              ),
+            ),
+          ),
           ValueListenableBuilder<Offset?>(
             valueListenable: _routeMarkerAnchor,
             builder: (context, anchor, _) {
@@ -1703,7 +1759,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               );
             },
           ),
-          if (state?.analysisLoading ?? false) ...[
+          if ((state?.analysisLoading ?? false) &&
+              (state?.analysisOnMap ?? false)) ...[
             ValueListenableBuilder<Offset?>(
               valueListenable: _analysisPingAnchor,
               builder: (context, anchor, _) => anchor == null
@@ -1725,34 +1782,129 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           ],
           if (state?.goToHelpLoading ?? false)
             const Positioned.fill(child: CalculatingRouteOverlay()),
-          if (state?.showAnalysisSheet == true && state?.activeAnalysis != null)
-            Positioned.fill(
-              child: AccessAnalysisSheet(
-                result: state!.activeAnalysis!,
-                categories: [
-                  for (final category in FacilityCategory.values)
-                    if (state.facilities.any((f) => f.category == category))
-                      category,
-                ],
-                selectedFilter: state.selectedFilter,
-                onFilterChanged: (filter) =>
-                    unawaited(_viewModel.filterAnalysis(filter)),
-                onMapRoute: (facility) {
-                  _viewModel.dismissAnalysisSheet();
-                  unawaited(_startGoToHelpToFacility(facility));
-                },
-                onViewInfo: (facility) => showFacilityInfoDialog(
-                  context,
-                  facility: facility,
-                  onGetDirections: () {
-                    _viewModel.dismissAnalysisSheet();
-                    _openPlannerTo(facility);
-                  },
+        ],
+      ),
+    );
+  }
+
+  Widget _sosButton(HomeMapState? state, double bottom) => Positioned(
+    right: 16,
+    bottom: bottom,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (state?.showSosMenu ?? false) ...[
+          SosActionMenu(onCallForHelp: _call112),
+          const SizedBox(height: 10),
+        ],
+        // Stays mounted in both states so it can spin into the ✕.
+        SosFab(
+          open: state?.showSosMenu ?? false,
+          onPressed: _viewModel.toggleSosMenu,
+        ),
+      ],
+    ),
+  );
+
+  /// Chat stays mounted behind the other tabs to keep its conversation, and
+  /// out of layout when collapsed, where it has no room for its fixed parts.
+  /// It scrolls its own messages, but the sheet's controller still needs a
+  /// scrollable to move the sheet at all — the empty list under it.
+  Widget _sheetContent(
+    HomeMapState? state,
+    ScrollController scrollController,
+  ) => LayoutBuilder(
+    builder: (context, constraints) {
+      final chatOpen = _tab == HomeTab.chat;
+      final chatFits = constraints.maxHeight >= 220;
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          if (chatOpen)
+            ListView(controller: scrollController)
+          else
+            _tabContent(state, scrollController),
+          Offstage(
+            offstage: !chatOpen || !chatFits,
+            child: TriageChatSheet(
+              onNavigateTo: (navigation) =>
+                  unawaited(_navigateFromTriage(navigation)),
+              onCall112: () => unawaited(_call112('triage')),
+            ),
+          ),
+          if (chatOpen && !chatFits)
+            const IgnorePointer(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  '911 Rescue Triage',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                onClose: _viewModel.dismissAnalysisSheet,
               ),
             ),
         ],
+      );
+    },
+  );
+
+  Widget _tabContent(HomeMapState? state, ScrollController scrollController) =>
+      switch (_tab) {
+        HomeTab.info ||
+        HomeTab.chat => InfoTab(scrollController: scrollController),
+        HomeTab.discover => _discover(state, scrollController),
+        HomeTab.profile => ProfileTab(
+          scrollController: scrollController,
+          onOpenDashboard: _openDashboard,
+        ),
+        null => FacilitySearchPanel(
+          scrollController: scrollController,
+          focusNode: _searchFocusNode,
+          onSelectResult: _selectFacility,
+        ),
+      };
+
+  Widget _discover(HomeMapState? state, ScrollController scrollController) {
+    final error = state?.analysisError;
+    final analysis = state?.activeAnalysis;
+    if (state == null || state.analysisLoading) {
+      return DiscoverStatus(scrollController: scrollController);
+    }
+    if (error != null) {
+      return DiscoverStatus(
+        scrollController: scrollController,
+        message: error,
+        onRetry: _runDiscoverAnalysis,
+      );
+    }
+    if (analysis == null) {
+      return state.goToHelpRoute != null
+          ? DiscoverStatus(
+              scrollController: scrollController,
+              message: 'Close your route to run a new analysis.',
+            )
+          : DiscoverStatus(scrollController: scrollController);
+    }
+    return AccessAnalysisSheet(
+      result: analysis,
+      scrollController: scrollController,
+      modeBar: GoToHelpModeBar(
+        selectedMode: state.selectedTransportMode,
+        onModeSelected: _changeCommuteMode,
+      ),
+      categories: [
+        for (final category in FacilityCategory.values)
+          if (state.facilities.any((f) => f.category == category)) category,
+      ],
+      selectedFilter: state.analysisOnMap
+          ? state.selectedFilter
+          : state.discoverFilter,
+      onFilterChanged: (filter) => unawaited(_viewModel.filterAnalysis(filter)),
+      onMapRoute: (facility) => unawaited(_startGoToHelpToFacility(facility)),
+      onViewInfo: (facility) => showFacilityInfoDialog(
+        context,
+        facility: facility,
+        onGetDirections: () => _openPlannerTo(facility),
       ),
     );
   }

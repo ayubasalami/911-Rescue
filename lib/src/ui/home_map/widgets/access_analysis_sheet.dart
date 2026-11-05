@@ -35,7 +35,8 @@ class AccessAnalysisSheet extends StatefulWidget {
     required this.onFilterChanged,
     required this.onMapRoute,
     required this.onViewInfo,
-    required this.onClose,
+    required this.scrollController,
+    required this.modeBar,
   });
 
   final AccessAnalysisResult result;
@@ -55,7 +56,12 @@ class AccessAnalysisSheet extends StatefulWidget {
 
   /// The web's "View Info": the facility info dialog.
   final void Function(Facility facility) onViewInfo;
-  final VoidCallback onClose;
+
+  /// The home sheet's, so dragging the list moves the sheet.
+  final ScrollController scrollController;
+
+  /// Picks the travel mode and re-runs the analysis.
+  final Widget modeBar;
 
   @override
   State<AccessAnalysisSheet> createState() => _AccessAnalysisSheetState();
@@ -67,143 +73,125 @@ class _AccessAnalysisSheetState extends State<AccessAnalysisSheet> {
   @override
   Widget build(BuildContext context) {
     final result = widget.result;
-    return DraggableScrollableSheet(
-      initialChildSize: 0.55,
-      minChildSize: 0.3,
-      maxChildSize: 0.92,
-      expand: false,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: context.palette.backgroundSurface,
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(AppRadii.lg),
+    return ListView(
+      controller: widget.scrollController,
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Real-Time Analysis (${result.mode.label})',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        widget.modeBar,
+        if (widget.categories.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(
+            'FACILITY TYPE',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: context.palette.textSecondary,
+              fontSize: 11,
+              letterSpacing: 0.5,
             ),
           ),
-          child: ListView(
-            controller: scrollController,
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Real-Time Analysis (${result.mode.label})',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  InkWell(
-                    onTap: widget.onClose,
-                    child: const Icon(Icons.close),
-                  ),
-                ],
+              _TypePill(
+                label: 'All',
+                selected: widget.selectedFilter == null,
+                onTap: () => widget.onFilterChanged(null),
               ),
-              if (widget.categories.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                Text(
-                  'FACILITY TYPE',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: context.palette.textSecondary,
-                    fontSize: 11,
-                    letterSpacing: 0.5,
-                  ),
+              for (final category in widget.categories)
+                _TypePill(
+                  label: category.displayLabel,
+                  selected: widget.selectedFilter == category,
+                  onTap: () => widget.onFilterChanged(category),
                 ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    _TypePill(
-                      label: 'All',
-                      selected: widget.selectedFilter == null,
-                      onTap: () => widget.onFilterChanged(null),
-                    ),
-                    for (final category in widget.categories)
-                      _TypePill(
-                        label: category.displayLabel,
-                        selected: widget.selectedFilter == category,
-                        onTap: () => widget.onFilterChanged(category),
-                      ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _StatCard(
-                      label: 'REACHABLE',
-                      value: '${result.reachableCount}',
-                      color: context.palette.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _StatCard(
-                      label: 'POPULATION',
-                      value: result.population == null
-                          ? 'N/A'
-                          : _formatPopulation(result.population!),
-                      color: context.palette.danger,
-                    ),
-                  ),
-                ],
-              ),
-              if (result.closest != null) ...[
-                const SizedBox(height: 12),
-                _ClosestFacilityCard(reachable: result.closest!),
-              ],
-              const SizedBox(height: 20),
-              Text(
-                'FACILITIES IN RANGE (TAP TO VIEW)',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: context.palette.textSecondary,
-                  fontSize: 12,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              const SizedBox(height: 8),
-              if (result.reachableCount == 0)
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Text(
-                    'No facilities reachable within the time threshold.',
-                    style: TextStyle(color: context.palette.textSecondary),
-                  ),
-                ),
-              for (final (index, band) in TimeBand.bands.indexed)
-                if (result.byBand[band]?.isNotEmpty ?? false) ...[
-                  _BandHeading(
-                    // The web: "Within 5 mins" for the first band, then
-                    // "5 - 10 mins", "10 - 15 mins"…
-                    label: index == 0
-                        ? 'Within ${band.maxMinutes} mins'
-                        : '${TimeBand.bands[index - 1].maxMinutes} - '
-                              '${band.maxMinutes} mins',
-                  ),
-                  for (final entry in result.byBand[band]!)
-                    _FacilityRow(
-                      entry: entry,
-                      expanded: _expandedFacilityId == entry.facility.id,
-                      onTap: () => setState(
-                        () => _expandedFacilityId =
-                            _expandedFacilityId == entry.facility.id
-                            ? null
-                            : entry.facility.id,
-                      ),
-                      onMapRoute: () => widget.onMapRoute(entry.facility),
-                      onViewInfo: () => widget.onViewInfo(entry.facility),
-                    ),
-                ],
             ],
           ),
-        );
-      },
+        ],
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                label: 'REACHABLE',
+                value: '${result.reachableCount}',
+                color: context.palette.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatCard(
+                label: 'POPULATION',
+                value: result.population == null
+                    ? 'N/A'
+                    : _formatPopulation(result.population!),
+                color: context.palette.danger,
+              ),
+            ),
+          ],
+        ),
+        if (result.closest != null) ...[
+          const SizedBox(height: 12),
+          _ClosestFacilityCard(reachable: result.closest!),
+        ],
+        const SizedBox(height: 20),
+        Text(
+          'FACILITIES IN RANGE (TAP TO VIEW)',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: context.palette.textSecondary,
+            fontSize: 12,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (result.reachableCount == 0)
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Text(
+              'No facilities reachable within the time threshold.',
+              style: TextStyle(color: context.palette.textSecondary),
+            ),
+          ),
+        for (final (index, band) in TimeBand.bands.indexed)
+          if (result.byBand[band]?.isNotEmpty ?? false) ...[
+            _BandHeading(
+              // The web: "Within 5 mins" for the first band, then
+              // "5 - 10 mins", "10 - 15 mins"…
+              label: index == 0
+                  ? 'Within ${band.maxMinutes} mins'
+                  : '${TimeBand.bands[index - 1].maxMinutes} - '
+                        '${band.maxMinutes} mins',
+            ),
+            for (final entry in result.byBand[band]!)
+              _FacilityRow(
+                entry: entry,
+                expanded: _expandedFacilityId == entry.facility.id,
+                onTap: () => setState(
+                  () => _expandedFacilityId =
+                      _expandedFacilityId == entry.facility.id
+                      ? null
+                      : entry.facility.id,
+                ),
+                onMapRoute: () => widget.onMapRoute(entry.facility),
+                onViewInfo: () => widget.onViewInfo(entry.facility),
+              ),
+          ],
+      ],
     );
   }
 }

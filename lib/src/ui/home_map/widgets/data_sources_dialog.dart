@@ -3,13 +3,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
 
-/// The web's "Data Sources & Attribution" modal — same sources, links and
-/// descriptions.
-Future<void> showDataSourcesDialog(BuildContext context) => showDialog<void>(
-  context: context,
-  builder: (_) => const DataSourcesDialog(),
-);
-
 const _sources = [
   (
     name: 'Mapbox',
@@ -55,8 +48,10 @@ const _sources = [
   ),
 ];
 
-class DataSourcesDialog extends StatelessWidget {
-  const DataSourcesDialog({super.key});
+/// The web's "Data Sources & Attribution" — same sources, links and
+/// descriptions — for the Info tab.
+class DataSourcesContent extends StatelessWidget {
+  const DataSourcesContent({super.key});
 
   Future<void> _open(BuildContext context, String url) async {
     final launched = await launchUrl(
@@ -72,79 +67,48 @@ class DataSourcesDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadii.lg),
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: Stack(
-          children: [
-            SingleChildScrollView(
-              padding: const EdgeInsets.all(25),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.only(right: 32),
-                    child: Text(
-                      'Data Sources & Attribution',
-                      style: TextStyle(
-                        color: context.palette.primary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Data Sources & Attribution',
+          style: TextStyle(
+            color: context.palette.primary,
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 10),
+        for (final source in _sources)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                InkWell(
+                  onTap: () => _open(context, source.url),
+                  child: Text(
+                    source.name,
+                    style: TextStyle(
+                      color: context.palette.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      height: 1.6,
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  const Divider(height: 1),
-                  const SizedBox(height: 15),
-                  for (final source in _sources)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          InkWell(
-                            onTap: () => _open(context, source.url),
-                            child: Text(
-                              source.name,
-                              style: TextStyle(
-                                color: context.palette.primary,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                                height: 1.6,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            source.desc,
-                            style: TextStyle(
-                              color: context.palette.textSecondary,
-                              fontSize: 13,
-                              height: 1.6,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
+                ),
+                Text(
+                  source.desc,
+                  style: TextStyle(
+                    color: context.palette.textSecondary,
+                    fontSize: 13,
+                    height: 1.6,
+                  ),
+                ),
+              ],
             ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: IconButton(
-                tooltip: 'Close',
-                onPressed: () => Navigator.of(context).pop(),
-                icon: Icon(Icons.close, color: context.palette.textSecondary),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+      ],
     );
   }
 }

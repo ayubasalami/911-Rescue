@@ -894,6 +894,7 @@ class MapAnnotationController {
   Future<void> flyToBounds(
     List<GeoPoint> points, {
     double padding = 60,
+    double bottomPadding = 0,
     double? maxZoom,
   }) async {
     final map = _map;
@@ -905,7 +906,7 @@ class MapAnnotationController {
       mapbox.MbxEdgeInsets(
         top: padding,
         left: padding,
-        bottom: padding,
+        bottom: padding + bottomPadding,
         right: padding,
       ),
       maxZoom,
@@ -915,6 +916,17 @@ class MapAnnotationController {
     // unpadded view.
     camera.padding = _edgeInsets();
     await map.flyTo(camera, mapbox.MapAnimationOptions(duration: 800));
+  }
+
+  /// Keeps Mapbox's logo and attribution, which its terms require to stay
+  /// visible, above whatever covers the bottom [inset] pixels of the map.
+  Future<void> setBottomChromeInset(double inset) async {
+    final map = _map;
+    if (map == null) return;
+    await map.logo.updateSettings(mapbox.LogoSettings(marginBottom: inset + 4));
+    await map.attribution.updateSettings(
+      mapbox.AttributionSettings(marginBottom: inset + 4),
+    );
   }
 
   /// The on-screen pixel for [point], or null if the map isn't ready yet.

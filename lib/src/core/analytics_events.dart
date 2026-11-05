@@ -80,4 +80,10 @@ abstract final class AnalyticsEvents {
 
   /// A Triage routing button. Params: `category`, `emergency`.
   static const triageHandoff = 'triage_handoff';
+
+  /// One of the four bottom tabs. Param: `tab`.
+  static const homeTabOpened = 'home_tab_opened';
+
+  /// The map's search button.
+  static const searchOpened = 'search_opened';
 }

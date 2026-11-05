@@ -159,6 +159,58 @@ const _pages = [
   ),
 ];
 
+/// Every tutorial page in one column, for the Info tab.
+class HowToUseContent extends StatelessWidget {
+  const HowToUseContent({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = TextStyle(
+      color: context.palette.textSecondary,
+      fontSize: 13,
+      height: 1.6,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final page in _pages) ...[
+          Text(
+            page.title,
+            style: TextStyle(
+              color: context.palette.accentGreen,
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(page.intro, style: muted),
+          const SizedBox(height: 8),
+          for (final (label, text) in page.items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text.rich(
+                TextSpan(
+                  style: muted,
+                  children: [
+                    TextSpan(
+                      text: '$label: ',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: context.palette.textPrimary,
+                      ),
+                    ),
+                    TextSpan(text: text),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+}
+
 class HowToUseDialog extends StatefulWidget {
   const HowToUseDialog({super.key});
 

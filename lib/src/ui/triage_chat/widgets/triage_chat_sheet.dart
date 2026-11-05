@@ -54,6 +54,7 @@ class TriageChatSheet extends ConsumerStatefulWidget {
     required this.onCall112,
   });
 
+  /// Handed to the screen, which starts the route.
   final ValueChanged<TriageNavigation> onNavigateTo;
   final VoidCallback onCall112;
 
@@ -128,10 +129,16 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(builder: _buildChat);
+  }
+
+  Widget _buildChat(BuildContext context, BoxConstraints constraints) {
+    // The sheet can be short: partly open, or with the keyboard up. The
+    // conversation and input matter most there, so the suggestions give way.
+    final showQuickReplies = constraints.maxHeight >= 400;
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -144,18 +151,13 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
               ),
-              InkWell(
-                onTap: () => Navigator.of(context).pop(),
-                child: const Icon(Icons.close),
-              ),
             ],
           ),
           const Divider(height: 24),
-          // Flexible (not a fixed maxHeight) so this takes whatever room is
-          // actually left in the dialog and scrolls internally instead of
-          // overflowing — the dialog has less room once the keyboard is up,
-          // which is exactly when a send is most likely to happen.
-          Flexible(
+          // Takes whatever room is left in the sheet and scrolls internally —
+          // there's less once the keyboard is up, which is exactly when a
+          // send is most likely to happen.
+          Expanded(
             child: SingleChildScrollView(
               controller: _scrollController,
               child: Column(
@@ -173,19 +175,21 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final reply in _quickReplies)
-                AppFilterChip(
-                  label: reply,
-                  selected: false,
-                  onTap: () => _fillQuickReply(reply),
-                ),
-            ],
-          ),
+          if (showQuickReplies) ...[
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final reply in _quickReplies)
+                  AppFilterChip(
+                    label: reply,
+                    selected: false,
+                    onTap: () => _fillQuickReply(reply),
+                  ),
+              ],
+            ),
+          ],
           const SizedBox(height: 16),
           const Divider(height: 1),
           const SizedBox(height: 12),

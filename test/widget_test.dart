@@ -4,11 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rescue_911/src/app.dart';
 import 'package:rescue_911/src/core/config/app_config.dart';
 import 'package:rescue_911/src/data/network/cookie_jar_provider.dart';
+import 'package:rescue_911/src/ui/home_map/widgets/sos_fab.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('App boots to the Home/Map screen', (WidgetTester tester) async {
     // The SOS button pulses forever, so pumpAndSettle would never settle —
     // run with the system "reduce motion" setting on, which stops it.
+    SharedPreferences.setMockInitialValues({});
     tester.platformDispatcher.accessibilityFeaturesTestValue =
         const FakeAccessibilityFeatures(disableAnimations: true);
     addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
@@ -44,24 +47,34 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('🚨'), findsOneWidget);
-    expect(find.textContaining('Rescue', findRichText: true), findsOneWidget);
+    expect(find.textContaining('Rescue', findRichText: true), findsWidgets);
 
+    // Info is the tab the app opens on.
+    expect(find.text('About 911 Rescue'), findsOneWidget);
+
+    // The emergency button is for SOS only; triage lives in Chat.
     await tester.tap(find.text('🚨'));
     await tester.pumpAndSettle();
-
-    expect(find.text('Report Incident'), findsOneWidget);
     expect(find.text('Call for Help - 112'), findsOneWidget);
-
-    await tester.tap(find.text('Report Incident'));
+    expect(find.text('Report Incident'), findsNothing);
+    await tester.tap(find.byType(SosFab));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Chat'));
+    await tester.pumpAndSettle();
     expect(find.text('911 Rescue Triage'), findsOneWidget);
-    expect(find.text('Call 112 Now'), findsOneWidget);
-
-    await tester.tap(find.text('Report Incident'));
-    await tester.pumpAndSettle();
-
     expect(find.text('Chest pain'), findsOneWidget);
     expect(find.text('Describe your symptoms...'), findsOneWidget);
+
+    await tester.tap(find.text('Profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dark mode'), findsOneWidget);
+
+    // Discover runs an analysis on opening, so it's never idle. With no
+    // network in tests it ends on the error state.
+    await tester.tap(find.text('Discover'));
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Dark mode'), findsNothing);
   });
 }

@@ -2,17 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 
-/// The SOS menu's "Report Incident" / "Call for Help" choices, shown above
-/// the SOS button — which stays put and turns into the ✕ (see [SosFab]),
+/// The SOS menu's "Call for Help" choice, shown above the SOS button — which stays put and turns into the ✕ (see [SosFab]),
 /// like the web, rather than this menu bringing its own close button.
 class SosActionMenu extends StatelessWidget {
-  const SosActionMenu({
-    super.key,
-    required this.onReportIncident,
-    required this.onCallForHelp,
-  });
+  const SosActionMenu({super.key, required this.onCallForHelp});
 
-  final VoidCallback onReportIncident;
   final VoidCallback onCallForHelp;
 
   @override
@@ -21,13 +15,6 @@ class SosActionMenu extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        _ActionPill(
-          icon: Icons.chat_bubble_outline,
-          label: 'Report Incident',
-          color: context.palette.primary,
-          onTap: onReportIncident,
-        ),
-        const SizedBox(height: 10),
         _ActionPill(
           icon: Icons.call,
           label: 'Call for Help - 112',

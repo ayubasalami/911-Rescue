@@ -72,6 +72,9 @@ class HomeMapState {
     required this.locationStatus,
     this.selectedFilter,
     this.selectedTransportMode = TransportMode.driving,
+    this.analysisError,
+    this.analysisOnMap = false,
+    this.discoverFilter,
     this.activeAnalysis,
     this.activeAnalysisOrigin,
     this.activeAnalysisFollowsUser = false,
@@ -121,6 +124,18 @@ class HomeMapState {
 
   final FacilityCategory? selectedFilter;
   final TransportMode selectedTransportMode;
+
+  /// Why the last analysis failed, for the Discover tab's error state.
+  final String? analysisError;
+
+  /// Whether the active analysis was asked for from the map (a popup's
+  /// Analyze), so its bands, route and pill show there. Discover's own runs
+  /// only fill its panel, leaving the map alone.
+  final bool analysisOnMap;
+
+  /// Discover's "Facility type" pill, separate from the map's filter so
+  /// picking one doesn't change the markers.
+  final FacilityCategory? discoverFilter;
 
   /// Master visibility for facility markers — the drawer's "Emergency
   /// Facilities" layer toggle, independent of [selectedFilter].
@@ -276,6 +291,9 @@ class HomeMapState {
     LocationAccessStatus? locationStatus,
     Object? selectedFilter = _unset,
     TransportMode? selectedTransportMode,
+    Object? analysisError = _unset,
+    bool? analysisOnMap,
+    Object? discoverFilter = _unset,
     Object? activeAnalysis = _unset,
     Object? activeAnalysisOrigin = _unset,
     bool? activeAnalysisFollowsUser,
@@ -327,6 +345,13 @@ class HomeMapState {
           : selectedFilter as FacilityCategory?,
       selectedTransportMode:
           selectedTransportMode ?? this.selectedTransportMode,
+      analysisError: identical(analysisError, _unset)
+          ? this.analysisError
+          : analysisError as String?,
+      analysisOnMap: analysisOnMap ?? this.analysisOnMap,
+      discoverFilter: identical(discoverFilter, _unset)
+          ? this.discoverFilter
+          : discoverFilter as FacilityCategory?,
       activeAnalysis: identical(activeAnalysis, _unset)
           ? this.activeAnalysis
           : activeAnalysis as AccessAnalysisResult?,
@@ -577,11 +602,20 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   /// map's, and the analysis re-runs for that type at the same point, as
   /// on the web.
   Future<void> filterAnalysis(FacilityCategory? filter) async {
-    selectFilter(filter);
+    final onMap = state.value?.analysisOnMap ?? false;
+    if (onMap) {
+      selectFilter(filter);
+    } else {
+      _update((s) => s.copyWith(discoverFilter: filter));
+    }
     final current = state.value;
     final origin = current?.activeAnalysisOrigin;
     if (origin == null) return;
-    await runAnalysis(origin, followsUser: current!.activeAnalysisFollowsUser);
+    await runAnalysis(
+      origin,
+      followsUser: current!.activeAnalysisFollowsUser,
+      onMap: onMap,
+    );
   }
 
   /// Just switches the selected transport mode — used by the origin popup's
@@ -815,11 +849,14 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     GeoPoint origin, {
     bool openSheet = true,
     bool followsUser = false,
+    bool onMap = true,
   }) async {
-    clearPopups();
+    if (onMap) clearPopups();
     _update(
       (s) => s.copyWith(
         analysisLoading: true,
+        analysisOnMap: onMap,
+        analysisError: null,
         analysisRoute: null,
         analysisRouteName: null,
         analysisRouteChipDismissed: false,
@@ -836,20 +873,25 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
           thresholdMinutes:
               state.value?.analysisThresholdMinutes ??
               kAccessAnalysisThresholdMinutes,
-          category: state.value?.selectedFilter,
+          category: onMap
+              ? state.value?.selectedFilter
+              : state.value?.discoverFilter,
         )) {
       case Ok(:final value):
         result = value;
       case Err(:final failure):
-        _update((s) => s.copyWith(analysisLoading: false));
-        _setError(failure.userMessage);
+        _update(
+          (s) => s.copyWith(
+            analysisLoading: false,
+            analysisError: failure.userMessage,
+          ),
+        );
         return;
     }
 
-    final (route: nearestRoute, name: nearestName) = await _routeToNearest(
-      origin,
-      mode,
-    );
+    final (route: nearestRoute, name: nearestName) = onMap
+        ? await _routeToNearest(origin, mode)
+        : (route: null, name: null);
 
     _log(AnalyticsEvents.accessAnalysisRun, {
       'mode':
@@ -939,8 +981,31 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         origin,
         openSheet: false,
         followsUser: current!.activeAnalysisFollowsUser,
+        onMap: current.analysisOnMap,
       );
     }
+  }
+
+  /// A fresh GPS fix for Discover's analysis. Without one, Discover shows
+  /// why.
+  Future<GeoPoint?> resolveDiscoverOrigin() async {
+    _update(
+      (s) => s.copyWith(
+        analysisLoading: true,
+        analysisOnMap: false,
+        analysisError: null,
+      ),
+    );
+    final result = await ref.read(locationRepositoryProvider).currentPosition();
+    if (result.position == null) {
+      _update(
+        (s) => s.copyWith(
+          analysisLoading: false,
+          analysisError: locationStatusMessage(result.status),
+        ),
+      );
+    }
+    return result.position;
   }
 
   Future<void> cancelAnalysis() async {
@@ -950,6 +1015,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         activeAnalysisOrigin: null,
         activeAnalysisFollowsUser: false,
         showAnalysisSheet: false,
+        analysisError: null,
+        analysisOnMap: false,
         analysisRoute: null,
         analysisRouteName: null,
       ),

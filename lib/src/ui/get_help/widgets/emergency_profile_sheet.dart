@@ -11,7 +11,11 @@ import '../view_model/emergency_profile_view_model.dart';
 /// modal, reachable from [GetHelpSheet]'s "My emergency profile" row.
 /// Stored locally only (see [EmergencyProfileRepository]).
 class EmergencyProfileSheet extends ConsumerStatefulWidget {
-  const EmergencyProfileSheet({super.key});
+  const EmergencyProfileSheet({super.key, this.embedded = false});
+
+  /// In the Profile tab rather than its own modal: no close button, and it
+  /// scrolls with the tab.
+  final bool embedded;
 
   @override
   ConsumerState<EmergencyProfileSheet> createState() =>
@@ -57,7 +61,14 @@ class _EmergencyProfileSheetState extends ConsumerState<EmergencyProfileSheet> {
       nextOfKinPhone: _nextOfKinPhoneController.text.trim(),
     );
     await ref.read(emergencyProfileViewModelProvider.notifier).save(profile);
-    if (mounted) Navigator.of(context).maybePop();
+    if (!mounted) return;
+    if (widget.embedded) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Emergency profile saved.')));
+    } else {
+      Navigator.of(context).maybePop();
+    }
   }
 
   Future<void> _clear() async {
@@ -75,106 +86,106 @@ class _EmergencyProfileSheetState extends ConsumerState<EmergencyProfileSheet> {
       _populate(profile);
     }
 
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Emergency profile',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+            ),
+            if (!widget.embedded)
+              InkWell(
+                onTap: () => Navigator.of(context).maybePop(),
+                borderRadius: BorderRadius.circular(AppRadii.full),
+                child: Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(
+                    Icons.close,
+                    size: 20,
+                    color: context.palette.textSecondary,
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Sent to the responder with your SOS, so they arrive knowing what matters. '
+          'Stored only on this device.',
+          style: TextStyle(color: context.palette.textSecondary, fontSize: 13),
+        ),
+        const SizedBox(height: 16),
+        if (profileAsync.isLoading && !_initialized)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else ...[
+          _ProfileField(
+            label: 'FULL NAME',
+            controller: _fullNameController,
+            hint: 'Adaeze Okonkwo',
+          ),
+          _ProfileField(
+            label: 'BLOOD GROUP',
+            controller: _bloodGroupController,
+            hint: 'O+',
+          ),
+          _ProfileField(
+            label: 'CONDITIONS',
+            controller: _conditionsController,
+            hint: 'Asthma, diabetes',
+          ),
+          _ProfileField(
+            label: 'ALLERGIES',
+            controller: _allergiesController,
+            hint: 'Penicillin',
+          ),
+          _ProfileField(
+            label: 'NEXT OF KIN',
+            controller: _nextOfKinController,
+            hint: 'Sister',
+          ),
+          _ProfileField(
+            label: 'NEXT OF KIN PHONE',
+            controller: _nextOfKinPhoneController,
+            hint: '+234…',
+            keyboardType: TextInputType.phone,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: AppButton(label: 'Save profile', onPressed: _save),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: AppButton(
+                  label: 'Clear',
+                  variant: AppButtonVariant.secondary,
+                  onPressed: _clear,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+    if (widget.embedded) {
+      return Padding(padding: const EdgeInsets.all(16), child: content);
+    }
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
       decoration: BoxDecoration(
         color: context.palette.backgroundSurface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadii.lg)),
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Emergency profile',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                  ),
-                ),
-                InkWell(
-                  onTap: () => Navigator.of(context).maybePop(),
-                  borderRadius: BorderRadius.circular(AppRadii.full),
-                  child: Padding(
-                    padding: EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.close,
-                      size: 20,
-                      color: context.palette.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Sent to the responder with your SOS, so they arrive knowing what matters. '
-              'Stored only on this device.',
-              style: TextStyle(
-                color: context.palette.textSecondary,
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (profileAsync.isLoading && !_initialized)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else ...[
-              _ProfileField(
-                label: 'FULL NAME',
-                controller: _fullNameController,
-                hint: 'Adaeze Okonkwo',
-              ),
-              _ProfileField(
-                label: 'BLOOD GROUP',
-                controller: _bloodGroupController,
-                hint: 'O+',
-              ),
-              _ProfileField(
-                label: 'CONDITIONS',
-                controller: _conditionsController,
-                hint: 'Asthma, diabetes',
-              ),
-              _ProfileField(
-                label: 'ALLERGIES',
-                controller: _allergiesController,
-                hint: 'Penicillin',
-              ),
-              _ProfileField(
-                label: 'NEXT OF KIN',
-                controller: _nextOfKinController,
-                hint: 'Sister',
-              ),
-              _ProfileField(
-                label: 'NEXT OF KIN PHONE',
-                controller: _nextOfKinPhoneController,
-                hint: '+234…',
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: AppButton(label: 'Save profile', onPressed: _save),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: AppButton(
-                      label: 'Clear',
-                      variant: AppButtonVariant.secondary,
-                      onPressed: _clear,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
+      child: SingleChildScrollView(child: content),
     );
   }
 }
