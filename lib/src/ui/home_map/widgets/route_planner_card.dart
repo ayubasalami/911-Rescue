@@ -34,8 +34,6 @@ class RoutePlannerCard extends ConsumerStatefulWidget {
     super.key,
     required this.onClose,
     required this.onGetDirections,
-    required this.selectedMode,
-    required this.onModeSelected,
     required this.onDropPin,
     this.initialDestination,
     this.loading = false,
@@ -58,11 +56,9 @@ class RoutePlannerCard extends ConsumerStatefulWidget {
     RoutePoint origin,
     RoutePoint destination, {
     required bool originFollowsUser,
+    required TransportMode mode,
   })
   onGetDirections;
-
-  final TransportMode selectedMode;
-  final ValueChanged<TransportMode> onModeSelected;
 
   /// Shows a spinner on "Get Directions" while a route fetch is in flight
   /// — mirrors [HomeMapState.goToHelpLoading].
@@ -78,6 +74,10 @@ class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
   RoutePoint? _origin;
   RoutePoint? _destination;
   bool _originFollowsUser = false;
+
+  /// The planner's own mode, starting on driving as on the web — not the one
+  /// last picked elsewhere in the app.
+  TransportMode _mode = TransportMode.driving;
 
   @override
   void initState() {
@@ -191,7 +191,14 @@ class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
       origin,
       destination,
       originFollowsUser: _originFollowsUser,
+      mode: _mode,
     );
+  }
+
+  /// Like the web, a new mode re-routes once both ends are set.
+  void _selectMode(TransportMode mode) {
+    setState(() => _mode = mode);
+    if (_origin != null && _destination != null && !widget.loading) _submit();
   }
 
   @override
@@ -305,8 +312,8 @@ class RoutePlannerCardState extends ConsumerState<RoutePlannerCard> {
               ),
               const SizedBox(height: 10),
               GoToHelpModeBar(
-                selectedMode: widget.selectedMode,
-                onModeSelected: widget.onModeSelected,
+                selectedMode: _mode,
+                onModeSelected: _selectMode,
                 compact: true,
               ),
               const SizedBox(height: 10),

@@ -494,11 +494,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final origin = state?.goToHelpOrigin;
     final route = state?.goToHelpRoute;
     if (!mounted || origin == null || route == null) return;
-    // Mapbox snaps the route's own first point to the nearest road, which
-    // can sit a little away from the pin itself and read as the line
-    // "overshooting" it — prepending the exact origin keeps the drawn line
-    // anchored to the pin.
-    await _mapController.renderRoute([origin, ...route.points]);
+    await _mapController.renderRoute(route.points);
     if (!mounted) return;
     await _mapController.flyToBounds(route.points);
   }
@@ -546,7 +542,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final origin = state?.goToHelpOrigin;
     final route = state?.goToHelpRoute;
     if (origin == null || route == null) return;
-    await _mapController.renderRoute([origin, ...route.points]);
+    await _mapController.renderRoute(route.points);
   }
 
   Future<void> _changeGoToHelpMode(TransportMode mode) async {
@@ -556,7 +552,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final origin = state?.goToHelpOrigin;
     final route = state?.goToHelpRoute;
     if (!mounted || origin == null || route == null) return;
-    await _mapController.renderRoute([origin, ...route.points]);
+    await _mapController.renderRoute(route.points);
   }
 
   Future<void> _closeGoToHelp() async {
@@ -707,7 +703,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     if (!mounted || origin == null || route == null || destination == null) {
       return;
     }
-    await _mapController.renderRoute([origin, ...route.points]);
+    await _mapController.renderRoute(route.points);
     if (!mounted) return;
     await _mapController.flyToBounds([
       origin,
@@ -845,7 +841,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final resolvedOrigin = state?.goToHelpOrigin;
     final route = state?.goToHelpRoute;
     if (!mounted || resolvedOrigin == null || route == null) return;
-    await _mapController.renderRoute([resolvedOrigin, ...route.points]);
+    await _mapController.renderRoute(route.points);
     if (!mounted) return;
     // Bound on the exact origin + destination, not just the route line's
     // own points — Mapbox/OSRM snap the route's first point to the nearest
@@ -865,6 +861,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     RoutePoint origin,
     RoutePoint destination, {
     required bool originFollowsUser,
+    required TransportMode mode,
   }) async {
     await _mapController.clearIsochroneAndRoute();
     if (!mounted) return;
@@ -873,6 +870,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       origin: origin,
       destination: destination,
       originFollowsUser: originFollowsUser,
+      mode: mode,
     );
     final state = ref.read(homeMapViewModelProvider).value;
     final resolvedOrigin = state?.goToHelpOrigin;
@@ -885,7 +883,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         !identical(state?.goToHelpDestination, destination)) {
       return;
     }
-    await _mapController.renderRoute([resolvedOrigin, ...route.points]);
+    await _mapController.renderRoute(route.points);
     if (!mounted) return;
     await _mapController.flyToBounds([
       resolvedOrigin,
@@ -1278,17 +1276,20 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                   onClose: _viewModel.closeRoutePlanner,
                   onDropPin: (target) =>
                       setState(() => _plannerDropTarget = target),
-                  selectedMode:
-                      state?.selectedTransportMode ?? TransportMode.driving,
-                  onModeSelected: _viewModel.setSelectedMode,
                   loading: state?.goToHelpLoading ?? false,
                   onGetDirections:
-                      (origin, destination, {required originFollowsUser}) {
+                      (
+                        origin,
+                        destination, {
+                        required originFollowsUser,
+                        required mode,
+                      }) {
                         unawaited(
                           _startRoutePlan(
                             origin,
                             destination,
                             originFollowsUser: originFollowsUser,
+                            mode: mode,
                           ),
                         );
                       },

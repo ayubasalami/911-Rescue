@@ -994,14 +994,18 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
 
   Future<DirectionsRoute?> fetchRoute(
     GeoPoint origin,
-    GeoPoint destination,
-  ) async {
+    GeoPoint destination, {
+    TransportMode? mode,
+  }) async {
     switch (await ref
         .read(accessAnalysisServiceProvider)
         .fetchRoute(
           origin: origin,
           destination: destination,
-          mode: state.value?.selectedTransportMode ?? TransportMode.driving,
+          mode:
+              mode ??
+              state.value?.selectedTransportMode ??
+              TransportMode.driving,
         )) {
       case Ok(:final value):
         return value;
@@ -1220,6 +1224,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     required RoutePoint origin,
     required RoutePoint destination,
     required bool originFollowsUser,
+    required TransportMode mode,
   }) async {
     var originPoint = origin.point;
     if (originFollowsUser) {
@@ -1230,7 +1235,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     }
 
     _update((s) => s.copyWith(goToHelpLoading: true));
-    final route = await fetchRoute(originPoint, destination.point);
+    final route = await fetchRoute(originPoint, destination.point, mode: mode);
     if (route == null) {
       _update((s) => s.copyWith(goToHelpLoading: false));
       return;
@@ -1248,6 +1253,9 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     }
     _update(
       (s) => s.copyWith(
+        // The route card's mode bar and any recalculation use this route's
+        // mode from here on.
+        selectedTransportMode: mode,
         goToHelpDestination: destination,
         goToHelpArrivedTripMinutes: null,
         goToHelpProgress: null,
