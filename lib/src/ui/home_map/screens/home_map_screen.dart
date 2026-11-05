@@ -46,6 +46,7 @@ import '../widgets/map_control_button.dart';
 import '../widgets/map_control_icons.dart';
 import '../widgets/map_legend.dart';
 import '../widgets/route_active_chip.dart';
+import '../widgets/route_marker_popup.dart';
 import '../widgets/route_planner_card.dart';
 import '../widgets/sos_action_menu.dart';
 import '../widgets/sos_fab.dart';
@@ -133,6 +134,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   GeoPoint? _analysisPingPoint;
   final _analysisPingAnchor = ValueNotifier<Offset?>(null);
 
+  /// The open route marker popup — the web's "Start Point" / "Destination" —
+  /// its map point, and its screen position, refreshed as the camera moves.
+  RouteMarkerPopupKind? _routeMarkerKind;
+  String _routeMarkerText = '';
+  GeoPoint? _routeMarkerPoint;
+  DateTime? _routeMarkerOpenedAt;
+  final _routeMarkerAnchor = ValueNotifier<Offset?>(null);
+
   /// Set while the Route Planner is waiting for a map tap to fill one of
   /// its fields (the web's "Tap anywhere on the map…" mode). The planner
   /// is hidden but kept alive meanwhile, so what's typed isn't lost.
@@ -157,6 +166,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   void dispose() {
     _popupAnchor.dispose();
     _analysisPingAnchor.dispose();
+    _routeMarkerAnchor.dispose();
     _pingActive.dispose();
     _cameraZoom.dispose();
     _mapBearing.dispose();
@@ -167,6 +177,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   void _resetToDefaultView() => _mapController.flyTo(defaultMapCenter);
 
   Future<void> _recenterOnUser() async {
+    // Like the web, a route stays on the map: this only moves the camera.
+    final state = ref.read(homeMapViewModelProvider).value;
+    if (state?.goToHelpRoute != null) {
+      final tracked = state!.goToHelpTracking ? state.goToHelpOrigin : null;
+      final point = state.goToHelpAccuracyMeters != null && tracked != null
+          ? tracked
+          : await _viewModel.currentUserLocation();
+      if (point == null || !mounted) return;
+      await _mapController.flyTo(point, minZoom: 17);
+      return;
+    }
     final point = await _viewModel.recenterOnUser();
     if (point == null || !mounted) return;
     await _mapController.flyTo(point, shiftDown: _popupShiftDown);
@@ -203,6 +224,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         _mapController.pixelForCoordinate(point).then((anchor) {
           if (mounted && _analysisPingPoint != null) {
             _analysisPingAnchor.value = anchor;
+          }
+        }),
+      );
+    }
+    if (_routeMarkerPoint case final point?) {
+      unawaited(
+        _mapController.pixelForCoordinate(point).then((anchor) {
+          if (mounted && _routeMarkerPoint != null) {
+            _routeMarkerAnchor.value = anchor;
           }
         }),
       );
@@ -274,7 +304,16 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     // Like the web, a plain map tap does nothing while a route is on the
     // map — dropping a pin would clear the route and its card (even
     // minimized) just because the user touched the map.
-    if (_goToHelpActive) return;
+    if (_goToHelpActive) {
+      // Platforms may also report a marker's tap as a map tap; only a later
+      // one closes its popup.
+      final opened = _routeMarkerOpenedAt;
+      if (opened == null ||
+          DateTime.now().difference(opened).inMilliseconds > 300) {
+        _closeRouteMarkerPopup();
+      }
+      return;
+    }
     unawaited(_selectDroppedPin(point));
   }
 
@@ -330,7 +369,62 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       _placePlannerPin(RoutePoint.fromFacility(facility));
       return;
     }
+    // The route's own destination, under its marker: opening the facility
+    // would end the route.
+    if (facility.name ==
+        ref.read(homeMapViewModelProvider).value?.goToHelpDestination?.name) {
+      _onDestinationTapped();
+      return;
+    }
     await _selectFacility(facility);
+  }
+
+  void _onStartPinTapped() {
+    final start = ref.read(homeMapViewModelProvider).value?.goToHelpStart;
+    if (start == null || _awaitingPlannerPin) return;
+    unawaited(
+      _openRouteMarkerPopup(
+        RouteMarkerPopupKind.start,
+        '📍 Start Point',
+        start,
+      ),
+    );
+  }
+
+  void _onDestinationTapped() {
+    final state = ref.read(homeMapViewModelProvider).value;
+    final destination = state?.goToHelpDestination;
+    if (state == null || destination == null || _awaitingPlannerPin) return;
+    final isFacility = state.facilities.any(
+      (facility) => facility.name == destination.name,
+    );
+    unawaited(
+      _openRouteMarkerPopup(
+        RouteMarkerPopupKind.destination,
+        isFacility ? '🏥 ${destination.name}' : '🏥 Destination',
+        destination.point,
+      ),
+    );
+  }
+
+  Future<void> _openRouteMarkerPopup(
+    RouteMarkerPopupKind kind,
+    String text,
+    GeoPoint point,
+  ) async {
+    final anchor = await _mapController.pixelForCoordinate(point);
+    if (!mounted) return;
+    _routeMarkerKind = kind;
+    _routeMarkerText = text;
+    _routeMarkerPoint = point;
+    _routeMarkerOpenedAt = DateTime.now();
+    _routeMarkerAnchor.value = anchor;
+  }
+
+  void _closeRouteMarkerPopup() {
+    _routeMarkerPoint = null;
+    _routeMarkerOpenedAt = null;
+    _routeMarkerAnchor.value = null;
   }
 
   /// Flies to and selects [facility] — shared by tapping a facility marker
@@ -506,11 +600,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// Begins live GPS tracking for the active route — the web platform's
   /// "Start" — and recenters the camera on the live origin once, rather
   /// than on every subsequent GPS fix (which would repeatedly wrest the
-  /// camera away from a user trying to pan/zoom manually).
+  /// camera away from a user trying to pan/zoom manually). A planner route
+  /// from a chosen start point stays put: that point isn't where the user is.
   Future<void> _startTracking() async {
     await _viewModel.startGoToHelpTracking();
-    final origin = ref.read(homeMapViewModelProvider).value?.goToHelpOrigin;
-    if (!mounted || origin == null) return;
+    final state = ref.read(homeMapViewModelProvider).value;
+    final origin = state?.goToHelpOrigin;
+    if (!mounted || origin == null || !(state?.goToHelpFollowsUser ?? false)) {
+      return;
+    }
     await _mapController.flyTo(origin);
   }
 
@@ -937,8 +1035,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// visibly drifts away from where the line actually starts. A dropped pin
   /// never has this problem since it already is a static marker.
   GeoPoint? _droppedPinPoint(HomeMapState? state) {
-    final goToHelpOrigin = state?.goToHelpOrigin;
-    if (goToHelpOrigin != null) return goToHelpOrigin;
+    final routeStart = state?.goToHelpStart;
+    if (routeStart != null) return routeStart;
     // A searched place has no facility marker of its own — show the pin
     // under its popup, as the web does.
     final facility = state?.selectedFacility;
@@ -958,6 +1056,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       mapboxMap,
       dark: _initialStyleDark ?? false,
       onFacilityTap: _onFacilityTapped,
+      onStartPinTap: _onStartPinTapped,
+      onDestinationTap: _onDestinationTapped,
     );
     final state = ref.read(homeMapViewModelProvider).value;
     await _mapController.syncFacilityPins(
@@ -990,6 +1090,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         ),
       );
       unawaited(_mapController.syncDroppedPin(_droppedPinPoint(state)));
+      unawaited(
+        _mapController.syncRouteDestination(state.goToHelpDestination?.point),
+      );
       unawaited(_mapController.setTrafficVisible(state.showLiveTraffic));
       unawaited(
         _mapController.syncBoundary(
@@ -1030,6 +1133,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     }
 
     ref.listen(homeMapViewModelProvider, (previous, next) {
+      if (next.value?.goToHelpRoute == null && _routeMarkerPoint != null) {
+        _closeRouteMarkerPopup();
+      }
+      // However the route ended, its line goes with it.
+      if (previous?.value?.goToHelpRoute != null &&
+          next.value?.goToHelpRoute == null) {
+        unawaited(_mapController.clearRoute());
+      }
       if ((next.value?.goToHelpFollowHeading ?? false) &&
           !(previous?.value?.goToHelpFollowHeading ?? false)) {
         unawaited(_mapController.beginFollow());
@@ -1568,6 +1679,29 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 onClose: _viewModel.dismissAnalysisRouteChip,
               ),
             ),
+          ValueListenableBuilder<Offset?>(
+            valueListenable: _routeMarkerAnchor,
+            builder: (context, anchor, _) {
+              final kind = _routeMarkerKind;
+              // Positioned even when hidden: an unpositioned child would
+              // shrink this always-present Stack entry's whole Stack to it.
+              if (anchor == null || kind == null) {
+                return const Positioned(
+                  left: 0,
+                  top: 0,
+                  child: SizedBox.shrink(),
+                );
+              }
+              return Positioned(
+                left: anchor.dx,
+                top: anchor.dy - 40,
+                child: FractionalTranslation(
+                  translation: const Offset(-0.5, -1),
+                  child: RouteMarkerPopup(kind: kind, text: _routeMarkerText),
+                ),
+              );
+            },
+          ),
           if (state?.analysisLoading ?? false) ...[
             ValueListenableBuilder<Offset?>(
               valueListenable: _analysisPingAnchor,

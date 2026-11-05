@@ -33,10 +33,9 @@ Future<ui.Image> _renderCategoryMarkerImage(FacilityCategory category) async {
   return picture.toImage(size.toInt(), size.toInt());
 }
 
-/// Rasterizes a map-pin glyph, used both for a dropped pin (bottom-anchored
-/// via [PointAnnotationOptions.iconAnchor]) and for the native GPS location
-/// puck, in [color]. Same [ui.Image]-returning convention as
-/// [_renderCategoryMarkerImage].
+/// Rasterizes a map-pin glyph, used for a dropped pin (bottom-anchored via
+/// [PointAnnotationOptions.iconAnchor]), in [color]. Same [ui.Image]-returning
+/// convention as [_renderCategoryMarkerImage].
 Future<ui.Image> _renderLocationPinImage(Color color) async {
   const size = 96.0;
   final recorder = ui.PictureRecorder();
@@ -69,6 +68,34 @@ const _userPurple = Color(0xFF7C3AED);
 /// Pixel density the heading marker is drawn at — registered with the same
 /// scale so it stays sharp.
 const _markerScale = 3.0;
+
+/// The web's `.user-loc-pin`, for the native location puck: a 14 px purple
+/// dot with a white ring, in a 22 px halo. The puck draws images at one image
+/// pixel per device pixel, so this renders at the device's ratio.
+Future<ui.Image> _renderUserLocationImage() async {
+  const size = 32.0;
+  final ratio = ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
+  final recorder = ui.PictureRecorder();
+  const centre = Offset(size / 2, size / 2);
+  Canvas(recorder)
+    ..scale(ratio)
+    ..drawCircle(
+      centre,
+      11,
+      Paint()..color = _userPurple.withValues(alpha: 0.25),
+    )
+    ..drawCircle(
+      centre.translate(0, 1),
+      7,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.4)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
+    )
+    ..drawCircle(centre, 7, Paint()..color = Colors.white)
+    ..drawCircle(centre, 4, Paint()..color = _userPurple);
+  final picture = recorder.endRecording();
+  return picture.toImage((size * ratio).toInt(), (size * ratio).toInt());
+}
 
 /// The web's `.user-heading-cone`: a 34 px wedge pointing up from the image
 /// centre, fading out towards its tip. Rotated on the map to the heading.
@@ -278,6 +305,9 @@ class MapAnnotationController {
   mapbox.MapboxMap? _map;
   mapbox.PointAnnotationManager? _facilityManager;
   mapbox.PointAnnotationManager? _originManager;
+
+  /// The web's marker on the active route's destination.
+  mapbox.PointAnnotationManager? _destinationManager;
   mapbox.PolygonAnnotationManager? _polygonManager;
   mapbox.PolylineAnnotationManager? _polylineManager;
 
@@ -404,6 +434,7 @@ class MapAnnotationController {
   List<GeoPoint>? _lastAnalysisRoute;
 
   GeoPoint? _lastDroppedPin;
+  GeoPoint? _lastDestination;
 
   static const _trafficSourceId = 'traffic-source';
   static const _trafficLayerId = 'traffic-layer';
@@ -418,6 +449,8 @@ class MapAnnotationController {
     mapbox.MapboxMap mapboxMap, {
     required bool dark,
     required void Function(mapbox.PointAnnotation) onFacilityTap,
+    required void Function() onStartPinTap,
+    required void Function() onDestinationTap,
   }) async {
     _map = mapboxMap;
     _styleDark = dark;
@@ -434,7 +467,13 @@ class MapAnnotationController {
     _facilityManager = facilityManager;
     facilityManager.tapEvents(onTap: onFacilityTap);
 
-    _originManager = await mapboxMap.annotations.createPointAnnotationManager();
+    final originManager = await mapboxMap.annotations
+        .createPointAnnotationManager();
+    // Never hidden by a facility marker it overlaps.
+    await originManager.setIconAllowOverlap(true);
+    await originManager.setIconIgnorePlacement(true);
+    originManager.tapEvents(onTap: (_) => onStartPinTap());
+    _originManager = originManager;
 
     _travelledManager = await mapboxMap.annotations
         .createPolylineAnnotationManager();
@@ -470,6 +509,13 @@ class MapAnnotationController {
     await responderManager.setIconIgnorePlacement(true);
     _responderManager = responderManager;
 
+    final destinationManager = await mapboxMap.annotations
+        .createPointAnnotationManager();
+    await destinationManager.setIconAllowOverlap(true);
+    await destinationManager.setIconIgnorePlacement(true);
+    destinationManager.tapEvents(onTap: (_) => onDestinationTap());
+    _destinationManager = destinationManager;
+
     final headingManager = await mapboxMap.annotations
         .createPointAnnotationManager();
     // The cone turns with the map, so its rotation is a compass bearing.
@@ -492,15 +538,18 @@ class MapAnnotationController {
       mapbox.LocationComponentSettings(
         enabled: true,
         puckBearingEnabled: false,
+        // The web's `user-loc-pulse`: the halo spreads 12 px past its 11 px
+        // radius and fades.
+        pulsingEnabled: true,
+        pulsingColor: _userPurple.toARGB32(),
+        pulsingMaxRadius: 23,
         locationPuck: mapbox.LocationPuck(
           locationPuck2D: mapbox.LocationPuck2D(
             // The location puck is a separate native codepath from style
             // annotations — it decodes an encoded image directly rather
             // than looking one up via addStyleImage, so this one still
             // wants PNG bytes, not a registered style image.
-            topImage: await _pngBytes(
-              await _renderLocationPinImage(_palette.primary),
-            ),
+            topImage: await _pngBytes(await _renderUserLocationImage()),
           ),
         ),
       ),
@@ -568,6 +617,11 @@ class MapAnnotationController {
     _lastDroppedPin = null;
     await _originManager?.deleteAll();
     if (pin != null) await syncDroppedPin(pin);
+
+    final destination = _lastDestination;
+    _lastDestination = null;
+    await _destinationManager?.deleteAll();
+    if (destination != null) await syncRouteDestination(destination);
 
     final boundary = _lastBoundary;
     _lastBoundary = null;
@@ -803,10 +857,15 @@ class MapAnnotationController {
   /// [shiftDown] lands [point] that many pixels below screen center instead
   /// of on it — for points that open a popup anchored *above* them, so the
   /// card itself ends up roughly centered rather than crowding the top.
-  Future<void> flyTo(GeoPoint point, {double shiftDown = 0}) async {
+  Future<void> flyTo(
+    GeoPoint point, {
+    double shiftDown = 0,
+    double minZoom = 13,
+  }) async {
     final map = _map;
     if (map == null) return;
-    // At least 13 (HomeMapScreen's facility-marker threshold), so centering
+    // At least [minZoom] — by default 13, HomeMapScreen's facility-marker
+    // threshold — so centering
     // on a point reveals nearby facilities — but never zooms *out* if the
     // user is already closer than that.
     final currentZoom = (await map.getCameraState()).zoom;
@@ -816,7 +875,7 @@ class MapAnnotationController {
     await map.easeTo(
       mapbox.CameraOptions(
         center: mapboxPointFrom(point),
-        zoom: currentZoom > 13 ? currentZoom : 13,
+        zoom: currentZoom > minZoom ? currentZoom : minZoom,
         // Top padding moves the camera's reference center down by half
         // its value. Always set explicitly (zero when not shifting) since
         // Mapbox keeps the last padding for later camera moves otherwise.
@@ -925,6 +984,31 @@ class MapAnnotationController {
     if (manager == null) return;
     if (identical(point, _lastDroppedPin)) return;
     _lastDroppedPin = point;
+
+    await manager.deleteAll();
+    if (point == null) return;
+
+    await _ensurePinDropImage();
+    await manager.create(
+      mapbox.PointAnnotationOptions(
+        geometry: mapboxPointFrom(point),
+        iconImage: _pinDropImageId,
+        iconSize: 0.6,
+        iconAnchor: mapbox.IconAnchor.BOTTOM,
+      ),
+    );
+  }
+
+  /// Draws (or, with null, clears) the marker on the route's destination.
+  Future<void> syncRouteDestination(GeoPoint? point) async {
+    final manager = _destinationManager;
+    if (manager == null) return;
+    final last = _lastDestination;
+    if (point?.latitude == last?.latitude &&
+        point?.longitude == last?.longitude) {
+      return;
+    }
+    _lastDestination = point;
 
     await manager.deleteAll();
     if (point == null) return;

@@ -49,10 +49,9 @@ class LocationService {
     );
   }
 
-  /// Live GPS updates for Go to Help's "Start" tracking — a 10m
-  /// [LocationSettings.distanceFilter] keeps it from firing on every tiny
-  /// GPS jitter, which would otherwise thrash the map camera and re-fetch
-  /// the route far more often than movement actually warrants.
+  /// Live GPS updates for Go to Help's "Start" tracking. No distance filter,
+  /// like the web's `watchPosition`: on Android one can hold back even the
+  /// first fix until the user has moved, leaving no "You are here" marker.
   Stream<Position> positionStream() {
     if (_isTestEnvironment) {
       return Stream.value(
@@ -71,10 +70,7 @@ class LocationService {
       );
     }
     return Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
-      ),
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     );
   }
 }

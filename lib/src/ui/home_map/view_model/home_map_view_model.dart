@@ -97,6 +97,7 @@ class HomeMapState {
     this.goToHelpCardExpanded = true,
     this.goToHelpLoading = false,
     this.goToHelpOrigin,
+    this.goToHelpStart,
     this.goToHelpFollowsUser = false,
     this.goToHelpTracking = false,
     this.goToHelpAccuracyMeters,
@@ -201,6 +202,11 @@ class HomeMapState {
   /// [OriginSelection] when the route starts, since [originSelection]
   /// itself gets cleared once Go to Help's card takes over the popup.
   final GeoPoint? goToHelpOrigin;
+
+  /// Where the active route began — the web's "Start Point" marker. Unlike
+  /// [goToHelpOrigin], live tracking never moves it, so a dropped pin stays
+  /// where it was dropped.
+  final GeoPoint? goToHelpStart;
   final bool goToHelpFollowsUser;
 
   /// Whether "Start" has been tapped — the live-navigation card layout
@@ -295,6 +301,7 @@ class HomeMapState {
     bool? goToHelpCardExpanded,
     bool? goToHelpLoading,
     Object? goToHelpOrigin = _unset,
+    Object? goToHelpStart = _unset,
     bool? goToHelpFollowsUser,
     bool? goToHelpTracking,
     Object? goToHelpAccuracyMeters = _unset,
@@ -369,6 +376,9 @@ class HomeMapState {
       goToHelpOrigin: identical(goToHelpOrigin, _unset)
           ? this.goToHelpOrigin
           : goToHelpOrigin as GeoPoint?,
+      goToHelpStart: identical(goToHelpStart, _unset)
+          ? this.goToHelpStart
+          : goToHelpStart as GeoPoint?,
       goToHelpFollowsUser: goToHelpFollowsUser ?? this.goToHelpFollowsUser,
       goToHelpTracking: goToHelpTracking ?? this.goToHelpTracking,
       goToHelpAccuracyMeters: identical(goToHelpAccuracyMeters, _unset)
@@ -618,6 +628,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpDestination: null,
         goToHelpRoute: null,
         goToHelpOrigin: null,
+        goToHelpStart: null,
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
@@ -652,6 +663,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpDestination: null,
         goToHelpRoute: null,
         goToHelpOrigin: null,
+        goToHelpStart: null,
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
@@ -692,6 +704,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpDestination: null,
         goToHelpRoute: null,
         goToHelpOrigin: null,
+        goToHelpStart: null,
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
@@ -1070,6 +1083,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         routeChipDismissed: false,
         goToHelpLoading: false,
         goToHelpOrigin: origin,
+        goToHelpStart: origin,
         goToHelpFollowsUser: originSelection.followsUser,
         showGetHelpFast: false,
         originSelection: null,
@@ -1182,6 +1196,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         routeChipDismissed: false,
         goToHelpLoading: false,
         goToHelpOrigin: origin,
+        goToHelpStart: origin,
         goToHelpFollowsUser: followsUser,
         showGetHelpFast: false,
         originSelection: null,
@@ -1247,6 +1262,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         routeChipDismissed: false,
         goToHelpLoading: false,
         goToHelpOrigin: originPoint,
+        goToHelpStart: originPoint,
         goToHelpFollowsUser: originFollowsUser,
         showGetHelpFast: false,
         // The planner's job is done once a route exists — only closed on
@@ -1296,6 +1312,9 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         // next fix finds it again.
         goToHelpProgress: route == null ? s.goToHelpProgress : null,
         goToHelpOrigin: origin,
+        // Before Start the line is redrawn from here; once tracking, the
+        // marker stays where the trip began.
+        goToHelpStart: s.goToHelpTracking ? s.goToHelpStart : origin,
         goToHelpLoading: false,
       ),
     );
@@ -1316,6 +1335,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpRoute: null,
         goToHelpLoading: false,
         goToHelpOrigin: null,
+        goToHelpStart: null,
         goToHelpFollowsUser: false,
         goToHelpTracking: false,
         goToHelpAccuracyMeters: null,
@@ -1390,12 +1410,11 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     // The GPS's heading, else the direction from the last fix once it's
     // more than 8 m away; otherwise keep the last known one.
     final last = _lastHeadingPoint;
+    final moved = last != null && haversineMeters(last, tracked.point) > 8;
     final heading =
         tracked.headingDegrees ??
-        (last != null && haversineMeters(last, tracked.point) > 8
-            ? bearingDegrees(last, tracked.point)
-            : null);
-    _lastHeadingPoint = tracked.point;
+        (moved ? bearingDegrees(last, tracked.point) : null);
+    if (last == null || moved) _lastHeadingPoint = tracked.point;
     _update(
       (s) => s.copyWith(
         goToHelpOrigin: tracked.point,
