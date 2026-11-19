@@ -65,6 +65,43 @@ class ResponderService {
         parse: (_) {},
       );
 
+  /// The dispatch queue: unclaimed pings for their agency plus their own.
+  /// Off duty, the server answers with an empty list.
+  Future<Result<List<ResponderPing>>> pings() => _api.get<List<ResponderPing>>(
+    '/api/responder/pings',
+    parse: (body) =>
+        _reader(body).list('pings', ResponderPing.fromJson).toList(),
+  );
+
+  /// Claiming is a race: a responder who loses gets `ConflictFailure` (409)
+  /// and should see the queue refreshed, not retry.
+  Future<Result<void>> accept(int pingId) => _api.post<void>(
+    '/api/responder/pings/$pingId/accept',
+    body: const {},
+    parse: (_) {},
+  );
+
+  /// How they're travelling — drives the ETA the waiting citizen sees.
+  Future<Result<void>> setMode(int pingId, String mode) => _api.post<void>(
+    '/api/responder/pings/$pingId/mode',
+    body: {'mode': mode},
+    parse: (_) {},
+  );
+
+  /// `en_route`, `arrived` or `resolved`.
+  Future<Result<void>> setStatus(int pingId, String status) => _api.post<void>(
+    '/api/responder/pings/$pingId/status',
+    body: {'status': status},
+    parse: (_) {},
+  );
+
+  /// Plays the citizen's voice note; the token is in the query string
+  /// because media players don't send the session cookie.
+  static String voiceUrl(String apiBaseUrl, String publicId) {
+    final id = Uri.encodeComponent(publicId);
+    return '$apiBaseUrl/api/ping/$id/voice?token=$id';
+  }
+
   static JsonReader _reader(Object? body) {
     if (body is! Map<String, dynamic>) {
       throw JsonFormatException(

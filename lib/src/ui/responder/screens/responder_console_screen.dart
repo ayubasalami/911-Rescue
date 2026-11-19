@@ -10,7 +10,9 @@ import '../../../utils/relative_time.dart';
 import '../../core/view_model/role_view_model.dart';
 import '../view_model/responder_auth_view_model.dart';
 import '../view_model/responder_console_view_model.dart';
+import '../view_model/responder_queue_view_model.dart';
 import '../widgets/console_parts.dart';
+import '../widgets/responder_ping_card.dart';
 
 /// The web's "Responder Console", one scrolling card.
 class ResponderConsoleScreen extends ConsumerWidget {
@@ -76,25 +78,7 @@ class ResponderConsoleScreen extends ConsumerWidget {
         const SizedBox(height: 16),
         _LocationCard(onDuty: responder.onDuty, console: console),
         const SizedBox(height: 16),
-        ConsoleSection(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Incoming emergency pings',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                responder.onDuty
-                    ? 'No active pings. You will see new ones here within a '
-                          'few seconds.'
-                    : 'Go on duty to receive pings.',
-                style: TextStyle(color: context.palette.textSecondary),
-              ),
-            ],
-          ),
-        ),
+        _PingsSection(onDuty: responder.onDuty),
         const SizedBox(height: 16),
         TextButton(
           onPressed: () => _switchToCitizen(context, ref, responder),
@@ -139,6 +123,66 @@ Future<void> _switchToCitizen(
   if (!context.mounted) return;
   ref.read(roleProvider.notifier).choose(AppRole.citizen);
   context.go(AppRoute.home);
+}
+
+/// The dispatch queue: red while anything is waiting.
+class _PingsSection extends ConsumerWidget {
+  const _PingsSection({required this.onDuty});
+
+  final bool onDuty;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
+    final queue = ref.watch(responderQueueViewModelProvider);
+    final waiting = onDuty ? queue.waiting : 0;
+    return ConsoleSection(
+      borderColor: waiting > 0 ? palette.danger : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(text: 'Incoming emergency pings'),
+                if (waiting > 0)
+                  TextSpan(
+                    text: '  ($waiting waiting)',
+                    style: TextStyle(color: palette.danger),
+                  ),
+              ],
+            ),
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          if (onDuty && queue.message != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              queue.message!,
+              style: TextStyle(color: palette.danger, fontSize: 12.5),
+            ),
+          ],
+          const SizedBox(height: 8),
+          if (!onDuty)
+            Text(
+              'Go on duty to receive pings.',
+              style: TextStyle(color: palette.textSecondary),
+            )
+          else if (queue.pings.isEmpty)
+            Text(
+              'No active pings. You will see new ones here within a few '
+              'seconds.',
+              style: TextStyle(color: palette.textSecondary),
+            )
+          else
+            for (final ping in queue.pings)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: ResponderPingCard(ping: ping),
+              ),
+        ],
+      ),
+    );
+  }
 }
 
 class _DutyCard extends ConsumerWidget {
