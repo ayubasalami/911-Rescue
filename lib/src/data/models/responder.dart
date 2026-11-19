@@ -80,9 +80,10 @@ class ResponderPing {
     publicId: r.stringOrNull('public_id') ?? '',
     status: PingStatus.fromApi(r.stringOrNull('status') ?? 'pending'),
     agency: r.stringOrNull('agency') ?? '',
+    // History entries may leave the position out; the queue always has it.
     userPoint: GeoPoint(
-      latitude: r.double_('user_lat'),
-      longitude: r.double_('user_lng'),
+      latitude: r.doubleOrNull('user_lat') ?? 0,
+      longitude: r.doubleOrNull('user_lng') ?? 0,
     ),
     userAccuracy: r.doubleOrNull('user_accuracy'),
     address: r.stringOrNull('user_address'),
@@ -134,4 +135,50 @@ class ResponderPing {
     PingStatus.enRoute,
     PingStatus.arrived,
   }.contains(status);
+}
+
+/// `/api/responder/history`: past incidents and totals. Medical profiles
+/// and recordings aren't included — the server deletes them on close.
+class ResponderHistory {
+  const ResponderHistory({
+    required this.entries,
+    required this.total,
+    required this.resolved,
+    this.avgAcceptSeconds,
+  });
+
+  factory ResponderHistory.fromJson(JsonReader r) {
+    final stats = r.objectOrNull('stats');
+    final entries = r.list('history', ResponderPing.fromJson);
+    return ResponderHistory(
+      entries: entries,
+      total: stats?.intOrNull('total') ?? entries.length,
+      resolved:
+          stats?.intOrNull('resolved') ??
+          entries.where((e) => e.status == PingStatus.resolved).length,
+      avgAcceptSeconds: stats?.doubleOrNull('avg_accept_secs'),
+    );
+  }
+
+  final List<ResponderPing> entries;
+  final int total;
+  final int resolved;
+  final double? avgAcceptSeconds;
+}
+
+extension ResponderPingTiming on ResponderPing {
+  /// How long the ping waited to be accepted, or null if it never was.
+  Duration? get acceptDelay {
+    final created = createdAt;
+    final accepted = acceptedAt;
+    if (created == null || accepted == null) return null;
+    return accepted.difference(created);
+  }
+}
+
+/// The web's "35s" or "2m 5s".
+String formatAcceptDelay(Duration delay) {
+  final seconds = delay.inSeconds;
+  if (seconds < 60) return '${seconds}s';
+  return '${seconds ~/ 60}m ${seconds % 60}s';
 }

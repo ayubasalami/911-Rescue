@@ -95,6 +95,12 @@ class ResponderService {
     parse: (_) {},
   );
 
+  /// Pings they've handled, with totals.
+  Future<Result<ResponderHistory>> history() => _api.get<ResponderHistory>(
+    '/api/responder/history',
+    parse: (body) => ResponderHistory.fromJson(_reader(body)),
+  );
+
   /// Plays the citizen's voice note; the token is in the query string
   /// because media players don't send the session cookie.
   static String voiceUrl(String apiBaseUrl, String publicId) {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../data/models/ping.dart';
 import '../../../data/models/responder.dart';
 import '../../../data/repositories/role_repository.dart';
 import '../../../routing/app_router.dart';
@@ -10,6 +11,7 @@ import '../../../utils/relative_time.dart';
 import '../../core/view_model/role_view_model.dart';
 import '../view_model/responder_auth_view_model.dart';
 import '../view_model/responder_console_view_model.dart';
+import '../view_model/responder_history_view_model.dart';
 import '../view_model/responder_queue_view_model.dart';
 import '../widgets/console_parts.dart';
 import '../widgets/responder_ping_card.dart';
@@ -79,6 +81,8 @@ class ResponderConsoleScreen extends ConsumerWidget {
         _LocationCard(onDuty: responder.onDuty, console: console),
         const SizedBox(height: 16),
         _PingsSection(onDuty: responder.onDuty),
+        const SizedBox(height: 16),
+        const _HistorySection(),
         const SizedBox(height: 16),
         TextButton(
           onPressed: () => _switchToCitizen(context, ref, responder),
@@ -184,6 +188,268 @@ class _PingsSection extends ConsumerWidget {
                 ),
               ),
         ],
+      ),
+    );
+  }
+}
+
+/// "My ping history": totals that double as filters, then each ping with a
+/// coloured edge by how it ended.
+class _HistorySection extends ConsumerWidget {
+  const _HistorySection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final palette = context.palette;
+    final state = ref.watch(responderHistoryViewModelProvider);
+    final actions = ref.read(responderHistoryViewModelProvider.notifier);
+    final history = state.history;
+    final visible = state.visible;
+    final muted = TextStyle(color: palette.textSecondary, fontSize: 12);
+    return ConsoleSection(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: actions.toggle,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(
+                          text: 'My ping history',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        if (history != null)
+                          TextSpan(
+                            text: ' · ${history.total} total',
+                            style: TextStyle(color: palette.textSecondary),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                Text(state.expanded ? '▲' : '▼', style: muted),
+              ],
+            ),
+          ),
+          if (state.expanded) ...[
+            const SizedBox(height: 12),
+            if (history != null)
+              Row(
+                spacing: 6,
+                children: [
+                  _StatTile(
+                    value: '${history.total}',
+                    label: 'HANDLED',
+                    color: palette.textPrimary,
+                    active: state.filter == HistoryFilter.all,
+                    onTap: () => actions.filterBy(HistoryFilter.all),
+                  ),
+                  _StatTile(
+                    value: '${history.resolved}',
+                    label: 'RESOLVED',
+                    color: palette.accentGreen,
+                    active: state.filter == HistoryFilter.resolved,
+                    onTap: () => actions.filterBy(HistoryFilter.resolved),
+                  ),
+                  _StatTile(
+                    value: history.avgAcceptSeconds == null
+                        ? '—'
+                        : '${history.avgAcceptSeconds!.round()}s',
+                    label: 'AVG ACCEPT',
+                    color: palette.primary,
+                    active: state.filter == HistoryFilter.fastest,
+                    onTap: () => actions.filterBy(HistoryFilter.fastest),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 10),
+            if (state.loading && history == null)
+              Center(child: Text('Loading…', style: muted))
+            else if (visible.isEmpty)
+              Center(
+                child: Text(
+                  (history?.entries.isEmpty ?? true)
+                      ? 'You have not handled any pings yet.'
+                      : 'Nothing matches this view.',
+                  style: muted,
+                ),
+              )
+            else ...[
+              if (state.filter != HistoryFilter.all)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    state.filter == HistoryFilter.resolved
+                        ? 'Showing ${visible.length} resolved'
+                        : 'Showing ${visible.length} by fastest acceptance',
+                    style: muted.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              for (final entry in visible) _HistoryEntry(entry: entry),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.value,
+    required this.label,
+    required this.color,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String value;
+  final String label;
+  final Color color;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: active ? palette.inputBg : null,
+            borderRadius: BorderRadius.circular(AppRadii.sm),
+            border: Border.all(
+              color: active ? palette.primary : palette.border,
+              width: active ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                label,
+                style: TextStyle(
+                  color: palette.textSecondary,
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HistoryEntry extends StatelessWidget {
+  const _HistoryEntry({required this.entry});
+
+  final ResponderPing entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final color = switch (entry.status) {
+      PingStatus.resolved => palette.accentGreen,
+      PingStatus.cancelled => palette.textSecondary,
+      PingStatus.pending || PingStatus.expired => palette.danger,
+      _ => palette.primary,
+    };
+    final muted = TextStyle(color: palette.textSecondary, fontSize: 12);
+    final delay = entry.acceptDelay;
+    final created = entry.createdAt;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 7),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppRadii.sm),
+        border: Border.all(color: palette.border),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: 4,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: const BorderRadius.horizontal(
+                  left: Radius.circular(AppRadii.sm),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '#${entry.id} · ${entry.agency}',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        Text(
+                          entry.status == PingStatus.enRoute
+                              ? 'EN ROUTE'
+                              : entry.status.name.toUpperCase(),
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (entry.address case final address?
+                        when address.isNotEmpty)
+                      Text(
+                        '📍 $address',
+                        style: const TextStyle(fontSize: 12.5),
+                      ),
+                    if (created != null)
+                      Text(
+                        'Raised ${relativeTime(created)}'
+                        '${delay == null ? '' : ' · accepted in ${formatAcceptDelay(delay)}'}',
+                        style: muted,
+                      ),
+                    Text(
+                      'From: ${entry.userEmail ?? 'anonymous'}'
+                      '${entry.responderMode == null ? '' : ' · by ${entry.responderMode}'}',
+                      style: muted,
+                    ),
+                    if (entry.note case final note? when note.trim().isNotEmpty)
+                      Text(
+                        '“$note”',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
