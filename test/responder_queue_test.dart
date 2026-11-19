@@ -39,8 +39,13 @@ class _FakeService extends ResponderService {
   @override
   Future<Result<Responder?>> status() async => const Ok(_onDuty);
 
+  void Function()? onPings;
+
   @override
-  Future<Result<List<ResponderPing>>> pings() async => queue;
+  Future<Result<List<ResponderPing>>> pings() async {
+    onPings?.call();
+    return queue;
+  }
 
   @override
   Future<Result<void>> accept(int pingId) async {
@@ -136,6 +141,23 @@ void main() {
     final state = container.read(responderQueueViewModelProvider);
     expect(state.message, 'Another responder accepted this ping first.');
     expect(state.pings, isEmpty);
+  });
+
+  test('Accept stays busy until the refreshed queue is in', () async {
+    final service = _FakeService()..queue = Ok([_ping(5)]);
+    final (container, _) = await _queue(service);
+    int? busyDuringRefresh;
+    service.onPings = () => busyDuringRefresh = container
+        .read(responderQueueViewModelProvider)
+        .busyPingId;
+    service.queue = Ok([_ping(5, status: PingStatus.accepted)]);
+    await container
+        .read(responderQueueViewModelProvider.notifier)
+        .accept(_ping(5));
+    expect(busyDuringRefresh, 5);
+    final state = container.read(responderQueueViewModelProvider);
+    expect(state.busyPingId, isNull);
+    expect(state.pings.single.isClaimed, isTrue);
   });
 
   test('status and mode go to the server', () async {

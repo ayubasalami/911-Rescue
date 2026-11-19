@@ -58,8 +58,12 @@ class _ResponderNavigationScreenState
   bool _headingUp = true;
   final _spokenSteps = <int>{};
   bool? _styleDark;
-  bool _framed = false;
   mapbox.CameraViewportState? _viewport;
+
+  /// The "both of you" view shown while the route is calculated; the move
+  /// to the responder waits for it so the two animations don't fight.
+  Future<void>? _overview;
+  bool _framed = false;
 
   /// Whether the ping has been in the queue since opening — until then an
   /// empty queue just hasn't loaded yet.
@@ -117,12 +121,16 @@ class _ResponderNavigationScreenState
     _routing = false;
     if (!mounted) return;
     if (result case Ok(:final value)) {
+      final first = _route == null;
       _spokenSteps.clear();
       setState(() {
         _route = value;
         _routeFrom = from;
         _routeMode = mode;
       });
+      // Once the first route is calculated, do what Re-centre does; later
+      // re-routes leave the camera where the responder put it.
+      if (first) unawaited(_focusOnResponder(from));
     }
   }
 
@@ -133,13 +141,16 @@ class _ResponderNavigationScreenState
     final route = _route;
     if (route != null) unawaited(_map.renderRoute(route.points));
     if (me == null) return;
-    unawaited(_maybeReroute(me.point, ping.userPoint, mode));
+    // While the route is calculated: both the responder and the ping.
     if (!_framed) {
       _framed = true;
-      unawaited(
-        _map.flyToBounds([me.point, ping.userPoint], padding: 80, maxZoom: 17),
+      _overview = _map.flyToBounds(
+        [me.point, ping.userPoint],
+        padding: 80,
+        maxZoom: 17,
       );
     }
+    unawaited(_maybeReroute(me.point, ping.userPoint, mode));
     final heading = me.headingDegrees;
     if (_headingUp && heading != null) unawaited(_map.followHeading(heading));
     if (_voiceOn && route != null) {
@@ -152,6 +163,15 @@ class _ResponderNavigationScreenState
         unawaited(_voice.speak(turn));
       }
     }
+  }
+
+  Future<void> _focusOnResponder(GeoPoint from) async {
+    await _overview;
+    // The overview's own animation runs 800 ms after it's sent.
+    await Future<void>.delayed(const Duration(milliseconds: 850));
+    if (!mounted) return;
+    final me = ref.read(responderConsoleViewModelProvider).position;
+    await _map.flyTo(me?.point ?? from, zoom: 17);
   }
 
   void _toggleHeading() {

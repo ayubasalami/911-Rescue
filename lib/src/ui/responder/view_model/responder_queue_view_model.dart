@@ -157,15 +157,20 @@ class ResponderQueueViewModel extends Notifier<ResponderQueueState> {
     state = state.copyWith(busyPingId: ping.id, message: null);
     final result = await action();
     if (!ref.mounted) return;
-    state = state.copyWith(busyPingId: null);
     if (result case Err(:final failure)) {
-      if (_auth.handleFailure(failure)) return;
+      if (_auth.handleFailure(failure)) {
+        state = state.copyWith(busyPingId: null);
+        return;
+      }
       state = state.copyWith(
         message: failure is ConflictFailure && lostRace != null
             ? lostRace
             : failure.userMessage,
       );
     }
+    // Busy until the queue shows the change: cleared before, the card would
+    // flash its old buttons (Accept again) while the refresh is on its way.
     await refresh();
+    if (ref.mounted) state = state.copyWith(busyPingId: null);
   }
 }
