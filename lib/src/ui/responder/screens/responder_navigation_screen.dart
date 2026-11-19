@@ -59,6 +59,7 @@ class _ResponderNavigationScreenState
   final _spokenSteps = <int>{};
   bool? _styleDark;
   bool _framed = false;
+  mapbox.CameraViewportState? _viewport;
 
   /// Whether the ping has been in the queue since opening — until then an
   /// empty queue just hasn't loaded yet.
@@ -217,7 +218,10 @@ class _ResponderNavigationScreenState
                     styleUri: MapAnnotationController.styleUriFor(
                       dark: _styleDark!,
                     ),
-                    viewport: mapbox.CameraViewportState(
+                    // Made once: a new viewport on every rebuild (each GPS
+                    // fix and queue check) reads as "move the camera here",
+                    // snapping it back over Re-centre and the opening fit.
+                    viewport: _viewport ??= mapbox.CameraViewportState(
                       center: mapboxPointFrom(ping.userPoint),
                       zoom: 15,
                     ),
