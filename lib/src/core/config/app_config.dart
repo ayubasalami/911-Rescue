@@ -10,6 +10,9 @@ class AppConfig {
     required this.mapboxAccessToken,
     required this.googleServerClientId,
     this.appleSignInEnabled = false,
+    this.analyticsEnabled = false,
+    this.posthogApiKey = '',
+    this.posthogHost = '',
   });
 
   final AppEnvironment environment;
@@ -29,6 +32,15 @@ class AppConfig {
   /// have its Apple token revoked on deletion. Prod turns it on only with
   /// `--dart-define=APPLE_SIGN_IN=true`, for internal test builds.
   final bool appleSignInEnabled;
+
+  /// Usage tracking for the backend's KPI dashboard and PostHog. Off in dev
+  /// builds, which share the production API and would count as real users.
+  final bool analyticsEnabled;
+
+  /// From `--dart-define-from-file=dart_defines.json`: the web app's
+  /// PostHog project, so web and mobile report together.
+  final String posthogApiKey;
+  final String posthogHost;
 }
 
 final appConfigProvider = Provider<AppConfig>((ref) {

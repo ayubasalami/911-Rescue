@@ -11,6 +11,9 @@ void main() async {
       googleServerClientId:
           '719724548862-jbglfulaussea2jcn1d4t0u77agggmcd.apps.googleusercontent.com',
       appleSignInEnabled: true,
+      analyticsEnabled: true,
+      posthogApiKey: String.fromEnvironment('POSTHOG_KEY'),
+      posthogHost: String.fromEnvironment('POSTHOG_HOST'),
     ),
   );
 }

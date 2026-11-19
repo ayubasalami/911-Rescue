@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
@@ -201,6 +202,9 @@ class ApiClient {
 /// `bootstrap()` and supplied via `overrideWithValue` (see
 /// cookie_jar_provider.dart), so nothing built on top of this has to deal
 /// with a `FutureProvider`.
+/// The `X-Client` header value: `android` or `ios`.
+String get apiClientName => Platform.isIOS ? 'ios' : 'android';
+
 final dioProvider = Provider<Dio>((ref) {
   final config = ref.watch(appConfigProvider);
 
@@ -210,7 +214,8 @@ final dioProvider = Provider<Dio>((ref) {
       connectTimeout: const Duration(seconds: 15),
       sendTimeout: const Duration(seconds: 15),
       receiveTimeout: const Duration(seconds: 20),
-      headers: const {'Accept': 'application/json'},
+      // X-Client tells the backend's API health page which app called.
+      headers: {'Accept': 'application/json', 'X-Client': apiClientName},
       // We classify status codes ourselves; let dio surface non-2xx as
       // DioExceptions instead of silently returning them as a Response.
       validateStatus: (status) =>

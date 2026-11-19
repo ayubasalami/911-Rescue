@@ -1,3 +1,5 @@
 {
-  "MAPBOX_ACCESS_TOKEN": "pk.your-mapbox-public-token"
+  "MAPBOX_ACCESS_TOKEN": "pk.your-mapbox-public-token",
+  "POSTHOG_KEY": "phc_your-posthog-project-key",
+  "POSTHOG_HOST": "https://us.i.posthog.com"
 }
