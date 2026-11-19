@@ -177,7 +177,11 @@ class _PingsSection extends ConsumerWidget {
             for (final ping in queue.pings)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: ResponderPingCard(ping: ping),
+                child: ResponderPingCard(
+                  ping: ping,
+                  onOpenNavigation: () =>
+                      context.push(AppRoute.responderNavigation(ping.id)),
+                ),
               ),
         ],
       ),

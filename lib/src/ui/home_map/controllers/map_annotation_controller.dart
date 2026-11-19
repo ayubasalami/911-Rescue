@@ -97,6 +97,28 @@ Future<ui.Image> _renderUserLocationImage() async {
   return picture.toImage((size * ratio).toInt(), (size * ratio).toInt());
 }
 
+/// The web responder map's target: a blue dot with a white ring, where the
+/// citizen who raised the ping is.
+Future<ui.Image> _renderTargetDotImage(Color color) async {
+  const size = 28.0;
+  final ratio = ui.PlatformDispatcher.instance.views.first.devicePixelRatio;
+  final recorder = ui.PictureRecorder();
+  const centre = Offset(size / 2, size / 2);
+  Canvas(recorder)
+    ..scale(ratio)
+    ..drawCircle(
+      centre.translate(0, 1),
+      9,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.35)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.5),
+    )
+    ..drawCircle(centre, 9, Paint()..color = Colors.white)
+    ..drawCircle(centre, 6, Paint()..color = color);
+  final picture = recorder.endRecording();
+  return picture.toImage((size * ratio).toInt(), (size * ratio).toInt());
+}
+
 /// The web's `.user-heading-cone`: a 34 px wedge pointing up from the image
 /// centre, fading out towards its tip. Rotated on the map to the heading.
 Future<ui.Image> _renderHeadingConeImage() async {
@@ -337,6 +359,13 @@ class MapAnnotationController {
   ResponderTrack? _responderTrack;
   Future<void> _responderSync = Future.value();
 
+  /// A responder's navigation target: the ping's position and how
+  /// accurate it is.
+  mapbox.PolygonAnnotationManager? _pingAccuracyManager;
+  mapbox.PointAnnotationManager? _pingTargetManager;
+  GeoPoint? _pingTarget;
+  double? _pingTargetAccuracy;
+
   /// The tracked "You are here" marker — on top of everything, and in place
   /// of the location puck while following a route.
   mapbox.PointAnnotationManager? _headingManager;
@@ -516,6 +545,14 @@ class MapAnnotationController {
     destinationManager.tapEvents(onTap: (_) => onDestinationTap());
     _destinationManager = destinationManager;
 
+    _pingAccuracyManager = await mapboxMap.annotations
+        .createPolygonAnnotationManager();
+    final pingTargetManager = await mapboxMap.annotations
+        .createPointAnnotationManager();
+    await pingTargetManager.setIconAllowOverlap(true);
+    await pingTargetManager.setIconIgnorePlacement(true);
+    _pingTargetManager = pingTargetManager;
+
     final headingManager = await mapboxMap.annotations
         .createPointAnnotationManager();
     // The cone turns with the map, so its rotation is a compass bearing.
@@ -608,6 +645,14 @@ class MapAnnotationController {
     if (headingPoint != null) {
       await syncHeadingMarker(headingPoint, headingDegrees);
     }
+
+    final pingTarget = _pingTarget;
+    final pingAccuracy = _pingTargetAccuracy;
+    _pingTarget = null;
+    _pingTargetAccuracy = null;
+    await _pingTargetManager?.deleteAll();
+    await _pingAccuracyManager?.deleteAll();
+    if (pingTarget != null) await syncPingTarget(pingTarget, pingAccuracy);
 
     final facilities = _lastSourceFacilities;
     _lastSourceFacilities = const [];
@@ -734,6 +779,48 @@ class MapAnnotationController {
         ),
       );
     }
+  }
+
+  /// Draws (or, with null, clears) where a responder is heading: the
+  /// citizen as a blue dot inside a pink circle as wide as their GPS error,
+  /// as the web's responder map does.
+  Future<void> syncPingTarget(GeoPoint? point, double? accuracyMeters) async {
+    final dots = _pingTargetManager;
+    final circles = _pingAccuracyManager;
+    if (dots == null || circles == null) return;
+    if (point?.latitude == _pingTarget?.latitude &&
+        point?.longitude == _pingTarget?.longitude &&
+        accuracyMeters == _pingTargetAccuracy) {
+      return;
+    }
+    _pingTarget = point;
+    _pingTargetAccuracy = accuracyMeters;
+    await dots.deleteAll();
+    await circles.deleteAll();
+    if (point == null) return;
+    if (accuracyMeters != null && accuracyMeters > 0) {
+      await circles.create(
+        mapbox.PolygonAnnotationOptions(
+          geometry: mapbox.Polygon(
+            coordinates: [_circleRing(point, accuracyMeters)],
+          ),
+          fillColor: _palette.danger.withValues(alpha: 0.18).toARGB32(),
+          fillOutlineColor: _palette.danger.withValues(alpha: 0.6).toARGB32(),
+        ),
+      );
+    }
+    const imageId = 'ping-target';
+    await _ensureStyleImage(
+      imageId,
+      () => _renderTargetDotImage(_palette.primary),
+      scale: ui.PlatformDispatcher.instance.views.first.devicePixelRatio,
+    );
+    await dots.create(
+      mapbox.PointAnnotationOptions(
+        geometry: mapboxPointFrom(point),
+        iconImage: imageId,
+      ),
+    );
   }
 
   /// Draws (or, with null, clears) an accepted ping's responder, as the web

@@ -8,6 +8,7 @@ import '../ui/dashboard/screens/dashboard_screen.dart';
 import '../ui/home_map/screens/home_map_screen.dart';
 import '../ui/responder/screens/responder_console_screen.dart';
 import '../ui/responder/screens/responder_login_screen.dart';
+import '../ui/responder/screens/responder_navigation_screen.dart';
 import '../ui/role/screens/role_selection_screen.dart';
 
 abstract final class AppRoute {
@@ -16,6 +17,8 @@ abstract final class AppRoute {
   static const role = '/role';
   static const responderLogin = '/responder/login';
   static const responder = '/responder';
+  static String responderNavigation(int pingId) =>
+      '/responder/navigate/$pingId';
 }
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -55,6 +58,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoute.responder,
         name: 'responder',
         builder: (context, state) => const ResponderConsoleScreen(),
+      ),
+      GoRoute(
+        path: '/responder/navigate/:id',
+        name: 'responder_navigation',
+        builder: (context, state) => ResponderNavigationScreen(
+          pingId: int.tryParse(state.pathParameters['id'] ?? '') ?? -1,
+        ),
       ),
     ],
   );
