@@ -62,7 +62,20 @@ class AnalyticsService {
   /// spec (`MOBILE_TRACKING_SPEC.md`), for its KPI dashboard. Same privacy
   /// rule as [logEvent]: no locations, search or symptom text, medical
   /// details or contact data.
+  /// Whether this device is being used as a responder's: the tracking spec
+  /// keeps staff screens out of the KPIs and PostHog, so nothing is sent
+  /// to either while set.
+  bool _paused = false;
+
+  void setPaused(bool paused) {
+    if (paused == _paused) return;
+    _paused = paused;
+    _kpi?.paused = paused;
+    _quietly(paused ? _posthog?.optOut() : _posthog?.optIn(), 'pause');
+  }
+
   void track(String name, [Map<String, Object>? props]) {
+    if (_paused) return;
     _kpi?.track(name, props);
     if (_kpiOnly.contains(name)) return;
     _quietly(_posthog?.capture(eventName: name, properties: props), name);
@@ -71,6 +84,7 @@ class AnalyticsService {
   /// A main screen shown: PostHog's screen view and the dashboard's
   /// `screen_view`.
   void screen(String name) {
+    if (_paused) return;
     _quietly(_posthog?.screen(screenName: name), 'screen');
     _kpi?.track('screen_view', {'screen': name});
   }

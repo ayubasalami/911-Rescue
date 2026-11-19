@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/result.dart';
+import '../models/geo_point.dart';
 import '../models/responder.dart';
 import '../network/api_client.dart';
 import '../network/json_reader.dart';
@@ -42,6 +43,27 @@ class ResponderService {
       return Responder.fromJson(r.object('responder'));
     },
   );
+
+  /// Only on-duty responders receive dispatch. Going off duty clears the
+  /// stored position. Returns the duty the server now has.
+  Future<Result<bool>> setDuty(bool onDuty) => _api.post<bool>(
+    '/api/responder/duty',
+    body: {'on_duty': onDuty},
+    parse: (body) => _reader(body).boolOr('on_duty', fallback: onDuty),
+  );
+
+  /// The position heartbeat. Rejected unless on duty; the server ignores
+  /// fixes worse than 500 m.
+  Future<Result<void>> sendLocation(GeoPoint point, double accuracy) =>
+      _api.post<void>(
+        '/api/responder/location',
+        body: {
+          'lat': point.latitude,
+          'lng': point.longitude,
+          'accuracy': accuracy,
+        },
+        parse: (_) {},
+      );
 
   static JsonReader _reader(Object? body) {
     if (body is! Map<String, dynamic>) {

@@ -40,6 +40,9 @@ class KpiTracker {
   /// Yes or no only, never who: null leaves it out.
   bool? signedIn;
 
+  /// Staff use mustn't count as public use: nothing is queued while set.
+  bool paused = false;
+
   static const sessionGap = Duration(minutes: 30);
   static const maxAge = Duration(hours: 72);
   static const maxQueue = 500;
@@ -117,7 +120,7 @@ class KpiTracker {
 
   /// Queues [name]. Names the backend would reject are dropped here.
   void track(String name, [Map<String, Object>? props]) {
-    if (!_validName.hasMatch(name)) return;
+    if (paused || !_validName.hasMatch(name)) return;
     final now = _now().millisecondsSinceEpoch;
     _touchSession(now);
     _queue.add({'name': name, 'ts': now, 'props': ?props});

@@ -55,6 +55,7 @@ dependencies:
   sign_in_with_apple: ^8.2.0
   package_info_plus: ^10.2.2
   posthog_flutter: ^5.61.1
+  wakelock_plus: ^1.8.0
 
 dev_dependencies:
   flutter_test:
