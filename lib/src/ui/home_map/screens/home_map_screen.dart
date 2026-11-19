@@ -26,6 +26,7 @@ import '../../core/view_model/auth_view_model.dart';
 import '../../dashboard/screens/dashboard_screen.dart';
 import '../../core/view_model/saved_facilities_view_model.dart';
 import '../../get_help/widgets/get_help_sheet.dart';
+import '../../../utils/map_zoom.dart';
 import '../../triage_chat/widgets/triage_chat_sheet.dart';
 import '../controllers/map_annotation_controller.dart';
 import '../view_model/home_map_view_model.dart';
@@ -285,8 +286,6 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     await _viewModel.runAnalysis(origin, followsUser: true, onMap: false);
   }
 
-  void _resetToDefaultView() => _mapController.flyTo(defaultMapCenter);
-
   Future<void> _recenterOnUser() async {
     // Like the web, a route stays on the map: this only moves the camera.
     final state = ref.read(homeMapViewModelProvider).value;
@@ -301,7 +300,16 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     }
     final point = await _viewModel.recenterOnUser();
     if (point == null || !mounted) return;
-    await _mapController.flyTo(point, shiftDown: _popupShiftDown);
+    final size = MediaQuery.sizeOf(context);
+    await _mapController.flyTo(
+      point,
+      shiftDown: _popupShiftDown,
+      zoom: zoomForRadius(
+        latitude: point.latitude,
+        radiusMeters: _myLocationRadiusMeters,
+        viewportWidth: size.shortestSide,
+      ),
+    );
     if (!mounted) return;
     final anchor = await _mapController.pixelForCoordinate(point);
     if (!mounted) return;
@@ -1091,6 +1099,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// instead of crowding the top.
   static const _popupShiftDown = 150.0;
 
+  /// QA's 500 m–1 km around the user for launch, Home and Your Location.
+  static const _myLocationRadiusMeters = 750.0;
+
   /// The web draws its control icons at 18px in a 34px button; scaled to
   /// our 44px buttons that's ~22px.
   static const _controlIconSize = 22.0;
@@ -1147,10 +1158,23 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     );
     // The web opens the tutorial on a first visit shortly after the map is
     // ready, rather than over a blank screen.
-    if (!isTestEnvironment) {
-      await Future<void>.delayed(const Duration(milliseconds: 700));
-      if (mounted) unawaited(showHowToUseIfFirstVisit(context));
+    if (isTestEnvironment) return;
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (!mounted) return;
+    // After the tutorial (first visit only) closes, so the two don't stack:
+    // the user's surroundings with the Your Location card and its Get Help
+    // Fast, unless they've already started something.
+    await showHowToUseIfFirstVisit(context);
+    final current = ref.read(homeMapViewModelProvider).value;
+    if (!mounted ||
+        current == null ||
+        current.goToHelpRoute != null ||
+        current.originSelection != null ||
+        current.selectedFacility != null ||
+        current.showRoutePlanner) {
+      return;
     }
+    await _recenterOnUser();
   }
 
   @override
@@ -1274,6 +1298,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final topInset = viewPadding.top;
     final routeActive =
         state?.goToHelpRoute != null && state?.goToHelpDestination != null;
+    // Navigation keeps the map clear: the planning controls, legend and
+    // most buttons hide until it stops.
+    final tracking = state?.goToHelpTracking ?? false;
     final mapAnalysis = (state?.analysisOnMap ?? false)
         ? state?.activeAnalysis
         : null;
@@ -1317,7 +1344,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 child: Text('Failed to load facilities: ${homeMapAsync.error}'),
               ),
             ),
-          if (state?.showLegend ?? true)
+          if ((state?.showLegend ?? true) && !tracking)
             Positioned(
               // The web's mobile `.info.legend`: 10px in, 160px up — clear
               // of the bottom-docked directions card. Fixed, and under the
@@ -1427,58 +1454,62 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                   ),
                   onTap: _recenterOnUser,
                 ),
-                const SizedBox(height: 8),
-                MapControlButton(
-                  icon: MapControlIcon.home.build(
-                    color: context.palette.textPrimary,
-                    size: _controlIconSize,
+                // While navigating only Locate and the compass stay, so the
+                // route has the map.
+                if (!tracking) ...[
+                  const SizedBox(height: 8),
+                  MapControlButton(
+                    icon: MapControlIcon.home.build(
+                      color: context.palette.textPrimary,
+                      size: _controlIconSize,
+                    ),
+                    onTap: _recenterOnUser,
                   ),
-                  onTap: _resetToDefaultView,
-                ),
-                const SizedBox(height: 8),
-                MapControlButton(
-                  icon: MapControlIcon.search.build(
-                    color: context.palette.textPrimary,
-                    size: _controlIconSize,
+                  const SizedBox(height: 8),
+                  MapControlButton(
+                    icon: MapControlIcon.search.build(
+                      color: context.palette.textPrimary,
+                      size: _controlIconSize,
+                    ),
+                    onTap: _openSearch,
                   ),
-                  onTap: _openSearch,
-                ),
-                const SizedBox(height: 8),
-                MapControlButton(
-                  icon: MapControlIcon.routePlanner.build(
-                    color: context.palette.primary,
-                    size: _controlIconSize,
+                  const SizedBox(height: 8),
+                  MapControlButton(
+                    icon: MapControlIcon.routePlanner.build(
+                      color: context.palette.primary,
+                      size: _controlIconSize,
+                    ),
+                    onTap: _viewModel.toggleRoutePlanner,
                   ),
-                  onTap: _viewModel.toggleRoutePlanner,
-                ),
-                const SizedBox(height: 8),
-                MapControlButton(
-                  icon: MapControlIcon.legend.build(
-                    color: (state?.showLegend ?? true)
-                        ? context.palette.primary
-                        : context.palette.textPrimary,
-                    size: _controlIconSize,
+                  const SizedBox(height: 8),
+                  MapControlButton(
+                    icon: MapControlIcon.legend.build(
+                      color: (state?.showLegend ?? true)
+                          ? context.palette.primary
+                          : context.palette.textPrimary,
+                      size: _controlIconSize,
+                    ),
+                    onTap: _viewModel.toggleLegend,
                   ),
-                  onTap: _viewModel.toggleLegend,
-                ),
-                const SizedBox(height: 8),
-                MapControlButton(
-                  icon: MapControlIcon.clear.build(
-                    color: context.palette.danger,
-                    size: _controlIconSize,
+                  const SizedBox(height: 8),
+                  MapControlButton(
+                    icon: MapControlIcon.clear.build(
+                      color: context.palette.danger,
+                      size: _controlIconSize,
+                    ),
+                    onTap: _clearActiveFeature,
                   ),
-                  onTap: _clearActiveFeature,
-                ),
-                const SizedBox(height: 8),
-                MapControlButton(
-                  icon: MapControlIcon.traffic.build(
-                    color: (state?.showLiveTraffic ?? false)
-                        ? context.palette.warning
-                        : context.palette.textPrimary,
-                    size: _controlIconSize,
+                  const SizedBox(height: 8),
+                  MapControlButton(
+                    icon: MapControlIcon.traffic.build(
+                      color: (state?.showLiveTraffic ?? false)
+                          ? context.palette.warning
+                          : context.palette.textPrimary,
+                      size: _controlIconSize,
+                    ),
+                    onTap: _viewModel.toggleLiveTrafficLayer,
                   ),
-                  onTap: _viewModel.toggleLiveTrafficLayer,
-                ),
+                ],
                 // The web's compass: shown while following your direction
                 // or whenever the map is turned.
                 ValueListenableBuilder<double>(
@@ -1633,22 +1664,24 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       ),
                     ),
             ),
-          if (state?.goToHelpRoute != null &&
-              state?.goToHelpDestination != null) ...[
-            Positioned(
-              // The facility filter tabs' slot — hidden above while a
-              // route is active, so the mode bar takes it over instead.
-              top: 58 + topInset,
-              left: 16,
-              right: 16,
-              child: Center(
-                child: GoToHelpModeBar(
-                  selectedMode: state!.selectedTransportMode,
-                  onModeSelected: _changeGoToHelpMode,
+          if (state != null &&
+              state.goToHelpRoute != null &&
+              state.goToHelpDestination != null) ...[
+            if (!tracking)
+              Positioned(
+                // The facility filter tabs' slot — hidden above while a
+                // route is active, so the mode bar takes it over instead.
+                top: 58 + topInset,
+                left: 16,
+                right: 16,
+                child: Center(
+                  child: GoToHelpModeBar(
+                    selectedMode: state.selectedTransportMode,
+                    onModeSelected: _changeGoToHelpMode,
+                  ),
                 ),
               ),
-            ),
-            if (!state.routeChipDismissed)
+            if (!state.routeChipDismissed && !tracking)
               Positioned(
                 // Below the mode bar rather than beside it — sharing a row
                 // caused the mode bar's own width to be squeezed enough to

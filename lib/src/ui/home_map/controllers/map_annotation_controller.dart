@@ -861,6 +861,7 @@ class MapAnnotationController {
     GeoPoint point, {
     double shiftDown = 0,
     double minZoom = 13,
+    double? zoom,
   }) async {
     final map = _map;
     if (map == null) return;
@@ -875,7 +876,7 @@ class MapAnnotationController {
     await map.easeTo(
       mapbox.CameraOptions(
         center: mapboxPointFrom(point),
-        zoom: currentZoom > minZoom ? currentZoom : minZoom,
+        zoom: zoom ?? (currentZoom > minZoom ? currentZoom : minZoom),
         // Top padding moves the camera's reference center down by half
         // its value. Always set explicitly (zero when not shifting) since
         // Mapbox keeps the last padding for later camera moves otherwise.

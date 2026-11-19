@@ -1473,6 +1473,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         goToHelpHeading: null,
         // The web turns the map with you as soon as you press Start.
         goToHelpFollowHeading: true,
+        // Collapsed to its distance and arrival, so the map has the room.
+        goToHelpCardExpanded: false,
       ),
     );
     _trackingSubscription = ref
