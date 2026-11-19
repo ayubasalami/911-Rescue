@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
@@ -64,6 +65,12 @@ class _ResponderNavigationScreenState
   /// to the responder waits for it so the two animations don't fight.
   Future<void>? _overview;
   bool _framed = false;
+
+  /// The citizen's details under the map: opened by the responder, or by
+  /// itself when a voice note or note arrives mid-journey.
+  bool _detailsOpen = false;
+  bool? _hadVoice;
+  String? _lastNote;
 
   /// Whether the ping has been in the queue since opening — until then an
   /// empty queue just hasn't loaded yet.
@@ -165,6 +172,24 @@ class _ResponderNavigationScreenState
     }
   }
 
+  /// A voice note or note sent after opening the map: open the details and
+  /// vibrate, so it isn't missed while driving.
+  void _noticeNewDetails(ResponderPing ping) {
+    final hadVoice = _hadVoice;
+    final lastNote = _lastNote;
+    _hadVoice = ping.hasVoice;
+    _lastNote = ping.note;
+    if (hadVoice == null) return;
+    final arrived =
+        (ping.hasVoice && !hadVoice) ||
+        ((ping.note ?? '').isNotEmpty && ping.note != lastNote);
+    if (!arrived) return;
+    unawaited(HapticFeedback.heavyImpact());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _detailsOpen = true);
+    });
+  }
+
   Future<void> _focusOnResponder(GeoPoint from) async {
     await _overview;
     // The overview's own animation runs 800 ms after it's sent.
@@ -204,6 +229,7 @@ class _ResponderNavigationScreenState
       }
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    _noticeNewDetails(ping);
     final mode = queue.modeFor(ping);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _sync(ping, me, mode);
@@ -333,6 +359,57 @@ class _ResponderNavigationScreenState
                             color: palette.textSecondary,
                             fontSize: 11,
                           ),
+                        ),
+                      ),
+                    const SizedBox(height: 4),
+                    InkWell(
+                      onTap: () => setState(() => _detailsOpen = !_detailsOpen),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            const Text(
+                              'Ping details',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            if (ping.hasVoice) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                '🎤 Voice note',
+                                style: TextStyle(
+                                  color: palette.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                            if ((ping.medicalProfile ?? '')
+                                .trim()
+                                .isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                '🩺',
+                                style: TextStyle(color: palette.danger),
+                              ),
+                            ],
+                            const Spacer(),
+                            Icon(
+                              _detailsOpen
+                                  ? Icons.expand_more
+                                  : Icons.expand_less,
+                              color: palette.textSecondary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_detailsOpen)
+                      ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.sizeOf(context).height * 0.3,
+                        ),
+                        child: SingleChildScrollView(
+                          child: ResponderPingDetails(ping: ping),
                         ),
                       ),
                     const SizedBox(height: 10),

@@ -46,8 +46,6 @@ class ResponderPingCard extends ConsumerWidget {
     final queue = ref.watch(responderQueueViewModelProvider);
     final actions = ref.read(responderQueueViewModelProvider.notifier);
     final busy = queue.busyPingId == ping.id;
-    final muted = TextStyle(color: palette.textSecondary, fontSize: 12);
-    final accuracy = ping.userAccuracy;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -76,65 +74,7 @@ class ResponderPingCard extends ConsumerWidget {
               ),
             ],
           ),
-          if (ping.medicalProfile case final profile?
-              when profile.trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: palette.danger.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: palette.danger),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '🩺 MEDICAL PROFILE',
-                    style: TextStyle(
-                      color: palette.danger,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(profile, style: const TextStyle(fontSize: 12.5)),
-                ],
-              ),
-            ),
-          ],
-          if (ping.address case final address? when address.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              '📍 $address',
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ],
-          if (ping.hasVoice) ...[
-            const SizedBox(height: 6),
-            _VoiceNote(ping: ping),
-          ],
-          const SizedBox(height: 4),
-          Text(
-            '${ping.userPoint.latitude.toStringAsFixed(5)}, '
-            '${ping.userPoint.longitude.toStringAsFixed(5)}'
-            '${accuracy == null ? '' : ' (±${accuracy.round()}m)'}',
-            style: muted,
-          ),
-          if (ping.createdAt case final created?)
-            Text('Raised ${relativeTime(created)}', style: muted),
-          if (ping.note case final note? when note.trim().isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              '“$note”',
-              style: const TextStyle(
-                fontSize: 12.5,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
+          ResponderPingDetails(ping: ping),
           if (ping.isClaimed && ping.isActive) ...[
             const SizedBox(height: 10),
             Text(
@@ -220,6 +160,83 @@ class ResponderPingCard extends ConsumerWidget {
   }
 }
 
+/// What the citizen sent: medical profile, address, voice note, position,
+/// when, and their note. Shared by the queue card and the navigation map,
+/// where a voice note can arrive mid-journey.
+class ResponderPingDetails extends StatelessWidget {
+  const ResponderPingDetails({super.key, required this.ping});
+
+  final ResponderPing ping;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    final muted = TextStyle(color: palette.textSecondary, fontSize: 12);
+    final accuracy = ping.userAccuracy;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (ping.medicalProfile case final profile?
+            when profile.trim().isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: palette.danger.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: palette.danger),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '🩺 MEDICAL PROFILE',
+                  style: TextStyle(
+                    color: palette.danger,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(profile, style: const TextStyle(fontSize: 12.5)),
+              ],
+            ),
+          ),
+        ],
+        if (ping.address case final address? when address.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            '📍 $address',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ],
+        if (ping.hasVoice) ...[
+          const SizedBox(height: 6),
+          _VoiceNote(ping: ping),
+        ],
+        const SizedBox(height: 4),
+        Text(
+          '${ping.userPoint.latitude.toStringAsFixed(5)}, '
+          '${ping.userPoint.longitude.toStringAsFixed(5)}'
+          '${accuracy == null ? '' : ' (±${accuracy.round()}m)'}',
+          style: muted,
+        ),
+        if (ping.createdAt case final created?)
+          Text('Raised ${relativeTime(created)}', style: muted),
+        if (ping.note case final note? when note.trim().isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            '“$note”',
+            style: const TextStyle(fontSize: 12.5, fontStyle: FontStyle.italic),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
 class _ModeTile extends StatelessWidget {
   const _ModeTile({
     required this.label,
@@ -293,8 +310,9 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-/// The citizen's voice note, streamed from the server. Recordings are
-/// deleted once the ping closes, so playback can fail late.
+/// The citizen's voice note, streamed from the server, in the web's audio
+/// bar: play/pause, elapsed time, a seek bar and the length, captioned
+/// "🎤 Voice description". Nothing is fetched until it's played.
 class _VoiceNote extends ConsumerStatefulWidget {
   const _VoiceNote({required this.ping});
 
@@ -306,62 +324,194 @@ class _VoiceNote extends ConsumerStatefulWidget {
 
 class _VoiceNoteState extends ConsumerState<_VoiceNote> {
   AudioPlayer? _player;
+  final _subscriptions = <StreamSubscription<Object?>>[];
   bool _playing = false;
+  bool _loading = false;
   bool _failed = false;
+  Duration _position = Duration.zero;
+  Duration? _duration;
 
   @override
   void dispose() {
-    unawaited(_player?.dispose());
+    _release();
     super.dispose();
   }
 
-  Future<void> _toggle() async {
-    var player = _player;
-    if (player != null && _playing) {
-      await player.pause();
-      return;
+  void _release() {
+    for (final subscription in _subscriptions) {
+      unawaited(subscription.cancel());
     }
-    try {
-      if (player == null) {
-        player = _player = AudioPlayer();
+    _subscriptions.clear();
+    unawaited(_player?.dispose());
+    _player = null;
+  }
+
+  Future<AudioPlayer> _load() async {
+    final player = AudioPlayer();
+    _player = player;
+    _subscriptions
+      ..add(
         player.playerStateStream.listen((state) {
           if (!mounted) return;
           final done = state.processingState == ProcessingState.completed;
-          if (done) unawaited(player!.seek(Duration.zero));
+          if (done) {
+            unawaited(player.pause());
+            unawaited(player.seek(Duration.zero));
+          }
           setState(() => _playing = state.playing && !done);
+        }),
+      )
+      ..add(
+        player.positionStream.listen((position) {
+          if (mounted) setState(() => _position = position);
+        }),
+      )
+      ..add(
+        player.durationStream.listen((duration) {
+          if (mounted && duration != null) {
+            setState(() => _duration = duration);
+          }
+        }),
+      );
+    await player.setUrl(
+      ResponderService.voiceUrl(
+        ref.read(appConfigProvider).apiBaseUrl,
+        widget.ping.publicId,
+      ),
+    );
+    return player;
+  }
+
+  Future<void> _toggle() async {
+    final current = _player;
+    if (current != null && _playing) {
+      await current.pause();
+      return;
+    }
+    try {
+      var player = current;
+      if (player == null) {
+        setState(() {
+          _loading = true;
+          _failed = false;
         });
-        await player.setUrl(
-          ResponderService.voiceUrl(
-            ref.read(appConfigProvider).apiBaseUrl,
-            widget.ping.publicId,
-          ),
-        );
+        player = await _load();
       }
+      if (mounted) setState(() => _loading = false);
       unawaited(player.play());
     } catch (_) {
-      if (mounted) setState(() => _failed = true);
+      // Start again on the next tap rather than give up for good.
+      _release();
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
     }
+  }
+
+  /// Why it didn't play. Recordings are deleted once a ping closes; while
+  /// it's open, the likely cause is the format — Chrome records WebM, which
+  /// iPhones can't play.
+  String get _failureText => widget.ping.isActive || widget.ping.isPending
+      ? 'Couldn\'t play this recording on this phone. Tap play to try '
+            'again, or read the transcript below.'
+      : 'The recording was deleted when the ping closed.';
+
+  static String _clock(Duration d) {
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final seconds = widget.ping.voiceSeconds;
-    return Row(
+    // Until it loads, the length the citizen's app reported.
+    final total =
+        _duration ??
+        (seconds == null
+            ? Duration.zero
+            : Duration(milliseconds: (seconds * 1000).round()));
+    final max = total.inMilliseconds.toDouble();
+    final value = _position.inMilliseconds.toDouble().clamp(0.0, max);
+    const foreground = Colors.white;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        IconButton.filledTonal(
-          onPressed: _failed ? null : _toggle,
-          icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
-          tooltip: _playing ? 'Pause' : 'Play voice description',
+        Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFF6B6B6B),
+            borderRadius: BorderRadius.circular(AppRadii.sm),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: _loading
+                    ? const Padding(
+                        padding: EdgeInsets.all(9),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: foreground,
+                        ),
+                      )
+                    : IconButton(
+                        padding: EdgeInsets.zero,
+                        onPressed: _toggle,
+                        tooltip: _playing ? 'Pause' : 'Play voice description',
+                        icon: Icon(
+                          _playing ? Icons.pause : Icons.play_arrow,
+                          color: foreground,
+                        ),
+                      ),
+              ),
+              Text(
+                _clock(_position),
+                style: const TextStyle(color: foreground, fontSize: 13),
+              ),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    activeTrackColor: foreground,
+                    inactiveTrackColor: foreground.withValues(alpha: 0.35),
+                    thumbColor: foreground,
+                    overlayShape: SliderComponentShape.noOverlay,
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 6,
+                    ),
+                  ),
+                  child: Slider(
+                    value: max <= 0 ? 0 : value,
+                    max: max <= 0 ? 1 : max,
+                    onChanged: _player == null || max <= 0
+                        ? null
+                        : (ms) => unawaited(
+                            _player?.seek(Duration(milliseconds: ms.round())),
+                          ),
+                  ),
+                ),
+              ),
+              Text(
+                _clock(total),
+                style: const TextStyle(color: foreground, fontSize: 13),
+              ),
+              const SizedBox(width: 6),
+            ],
+          ),
         ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            _failed
-                ? 'The recording is no longer available.'
-                : '🎤 Voice description'
-                      '${seconds == null ? '' : ' · ${seconds.round()}s'}',
-            style: TextStyle(color: palette.textSecondary, fontSize: 12),
+        const SizedBox(height: 4),
+        Text(
+          _failed ? _failureText : '🎤 Voice description',
+          style: TextStyle(
+            color: _failed ? palette.danger : palette.textSecondary,
+            fontSize: 12,
           ),
         ),
       ],

@@ -11,6 +11,7 @@ import '../../../data/repositories/location_repository.dart';
 import '../../../data/services/responder_service.dart';
 import '../../../utils/location_share_gate.dart';
 import 'responder_auth_view_model.dart';
+import 'responder_queue_view_model.dart';
 
 class ResponderConsoleState {
   const ResponderConsoleState({
@@ -98,9 +99,19 @@ class ResponderConsoleViewModel extends Notifier<ResponderConsoleState> {
     }
   }
 
+  /// Shown wherever going off duty is refused.
+  static const activePingMessage =
+      'Resolve your active ping before going off duty.';
+
   Future<void> toggleDuty() async {
     final responder = ref.read(responderAuthViewModelProvider).value;
     if (responder == null || state.dutyBusy) return;
+    // The citizen is waiting on this responder's position and ETA.
+    if (responder.onDuty &&
+        ref.read(responderQueueViewModelProvider).hasActivePing) {
+      state = state.copyWith(dutyError: activePingMessage);
+      return;
+    }
     state = state.copyWith(dutyBusy: true, dutyError: null);
     final result = await _service.setDuty(!responder.onDuty);
     switch (result) {

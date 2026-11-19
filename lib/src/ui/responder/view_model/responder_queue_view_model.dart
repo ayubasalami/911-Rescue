@@ -31,6 +31,11 @@ class ResponderQueueState {
 
   int get waiting => pings.where((ping) => ping.isPending).length;
 
+  /// A ping this responder has accepted and not yet resolved: they must
+  /// stay on duty, sharing their position, until it's done.
+  bool get hasActivePing =>
+      pings.any((ping) => ping.isClaimed && ping.isActive);
+
   /// Car until they say otherwise, as on the web.
   String modeFor(ResponderPing ping) =>
       modes[ping.id] ?? ping.responderMode ?? 'driving';

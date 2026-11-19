@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rescue_911/src/core/app_failure.dart';
 import 'package:rescue_911/src/core/result.dart';
 import 'package:rescue_911/src/data/models/geo_point.dart';
+import 'package:rescue_911/src/data/models/ping.dart';
 import 'package:rescue_911/src/data/models/responder.dart';
 import 'package:rescue_911/src/data/network/api_client.dart';
 import 'package:rescue_911/src/data/repositories/location_repository.dart';
@@ -13,6 +14,7 @@ import 'package:rescue_911/src/data/services/location_service.dart';
 import 'package:rescue_911/src/data/services/responder_service.dart';
 import 'package:rescue_911/src/ui/responder/view_model/responder_auth_view_model.dart';
 import 'package:rescue_911/src/ui/responder/view_model/responder_console_view_model.dart';
+import 'package:rescue_911/src/ui/responder/view_model/responder_queue_view_model.dart';
 import 'package:rescue_911/src/utils/location_share_gate.dart';
 import 'package:rescue_911/src/utils/relative_time.dart';
 
@@ -36,8 +38,17 @@ class _FakeService extends ResponderService {
   @override
   Future<Result<Responder?>> status() async => Ok(current);
 
+  List<ResponderPing> queue = const [];
+  var dutyCalls = 0;
+
   @override
-  Future<Result<bool>> setDuty(bool onDuty) async => dutyResult ?? Ok(onDuty);
+  Future<Result<bool>> setDuty(bool onDuty) async {
+    dutyCalls++;
+    return dutyResult ?? Ok(onDuty);
+  }
+
+  @override
+  Future<Result<List<ResponderPing>>> pings() async => Ok(queue);
 
   @override
   Future<Result<void>> sendLocation(GeoPoint point, double accuracy) async {
@@ -191,6 +202,40 @@ void main() {
     expect(container.read(responderAuthViewModelProvider).value, isNull);
     expect(container.read(responderSignOutNoticeProvider), isNotNull);
     expect(container.read(responderConsoleViewModelProvider).position, isNull);
+  });
+
+  test('an accepted, unresolved ping keeps the responder on duty', () async {
+    final service = _FakeService(current: _musa(onDuty: true))
+      ..queue = [
+        ResponderPing(
+          id: 4,
+          publicId: 'p4',
+          status: PingStatus.enRoute,
+          agency: 'Police',
+          userPoint: _home,
+          responderId: 'POL-001',
+        ),
+      ];
+    final container = await _console(service, _FakeLocation());
+    container.read(responderQueueViewModelProvider);
+    await pumpEventQueue();
+    expect(
+      container.read(responderQueueViewModelProvider).hasActivePing,
+      isTrue,
+    );
+
+    await container
+        .read(responderConsoleViewModelProvider.notifier)
+        .toggleDuty();
+    expect(service.dutyCalls, 0);
+    expect(
+      container.read(responderAuthViewModelProvider).value!.onDuty,
+      isTrue,
+    );
+    expect(
+      container.read(responderConsoleViewModelProvider).dutyError,
+      ResponderConsoleViewModel.activePingMessage,
+    );
   });
 
   test('a failed duty change shows why and keeps the duty', () async {

@@ -29,6 +29,11 @@ class ResponderConsoleScreen extends ConsumerWidget {
     });
     final auth = ref.watch(responderAuthViewModelProvider);
     final console = ref.watch(responderConsoleViewModelProvider);
+    // An accepted, unresolved ping keeps the responder on duty: no going
+    // off duty, signing out or switching to the citizen side until it's done.
+    final activePing = ref.watch(
+      responderQueueViewModelProvider.select((q) => q.hasActivePing),
+    );
     final responder = auth.value;
     if (responder == null) {
       // Signed out (handled by the listener) or still checking the session.
@@ -62,8 +67,12 @@ class ResponderConsoleScreen extends ConsumerWidget {
               ),
             ),
             OutlinedButton(
-              onPressed: () =>
-                  ref.read(responderAuthViewModelProvider.notifier).signOut(),
+              // Signing out ends duty on the server too.
+              onPressed: activePing
+                  ? null
+                  : () => ref
+                        .read(responderAuthViewModelProvider.notifier)
+                        .signOut(),
               style: OutlinedButton.styleFrom(
                 foregroundColor: context.palette.textPrimary,
                 side: BorderSide(color: context.palette.border),
@@ -85,7 +94,9 @@ class ResponderConsoleScreen extends ConsumerWidget {
         const _HistorySection(),
         const SizedBox(height: 16),
         TextButton(
-          onPressed: () => _switchToCitizen(context, ref, responder),
+          onPressed: activePing
+              ? null
+              : () => _switchToCitizen(context, ref, responder),
           child: const Text('← Switch to citizen'),
         ),
       ],
@@ -465,6 +476,12 @@ class _DutyCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.palette;
     final onDuty = responder.onDuty;
+    // Can't go off duty with an accepted ping still open.
+    final locked =
+        onDuty &&
+        ref.watch(
+          responderQueueViewModelProvider.select((q) => q.hasActivePing),
+        );
     return ConsoleSection(
       borderColor: onDuty ? palette.accentGreen : palette.border,
       borderWidth: 2,
@@ -484,7 +501,7 @@ class _DutyCard extends ConsumerWidget {
                 ),
               ),
               FilledButton(
-                onPressed: console.dutyBusy
+                onPressed: console.dutyBusy || locked
                     ? null
                     : ref
                           .read(responderConsoleViewModelProvider.notifier)
@@ -516,7 +533,17 @@ class _DutyCard extends ConsumerWidget {
                       'your location is not shared.',
             style: TextStyle(color: palette.textSecondary, fontSize: 13),
           ),
-          if (console.dutyError != null) ...[
+          if (locked) ...[
+            const SizedBox(height: 6),
+            Text(
+              ResponderConsoleViewModel.activePingMessage,
+              style: TextStyle(
+                color: palette.textPrimary,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ] else if (console.dutyError != null) ...[
             const SizedBox(height: 6),
             Text(
               console.dutyError!,
