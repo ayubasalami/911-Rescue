@@ -52,9 +52,17 @@ class ResponderAuthViewModel extends AsyncNotifier<Responder?> {
     }
   }
 
-  Future<void> signOut() async {
+  /// Waits for the server, which also takes them off duty: signed out
+  /// only here while still on duty there, dispatch would keep counting on
+  /// them. Returns a message to show when it couldn't, null once done.
+  Future<String?> signOut() async {
+    final result = await _service.logout();
+    if (result case Err(:final failure) when failure is! UnauthorizedFailure) {
+      // An expired or taken-over session is already signed out there.
+      return 'Couldn\'t sign out. Check your connection and try again.';
+    }
     state = const AsyncData(null);
-    await _service.logout();
+    return null;
   }
 
   /// Another device signed in to this account: only one may be active, so

@@ -38,10 +38,12 @@ class _FakeService extends ResponderService {
     return loginResult;
   }
 
+  Result<void> logoutResult = const Ok(null);
+
   @override
   Future<Result<void>> logout() async {
     loggedOut = true;
-    return const Ok(null);
+    return logoutResult;
   }
 
   @override
@@ -129,12 +131,39 @@ void main() {
     );
   });
 
-  test('signing out ends the server session', () async {
+  test('signing out waits for the server, then signs out', () async {
     final service = _FakeService(current: _musa);
     final container = _container(service);
     await container.read(responderAuthViewModelProvider.future);
-    await container.read(responderAuthViewModelProvider.notifier).signOut();
+    final message = await container
+        .read(responderAuthViewModelProvider.notifier)
+        .signOut();
+    expect(message, isNull);
     expect(service.loggedOut, isTrue);
+    expect(container.read(responderAuthViewModelProvider).value, isNull);
+  });
+
+  test('no connection keeps them signed in, with a reason', () async {
+    final service = _FakeService(current: _musa)
+      ..logoutResult = const Err(NetworkFailure());
+    final container = _container(service);
+    await container.read(responderAuthViewModelProvider.future);
+    final message = await container
+        .read(responderAuthViewModelProvider.notifier)
+        .signOut();
+    expect(message, contains('Couldn\'t sign out'));
+    expect(container.read(responderAuthViewModelProvider).value, isNotNull);
+  });
+
+  test('an already-ended session still signs out here', () async {
+    final service = _FakeService(current: _musa)
+      ..logoutResult = const Err(UnauthorizedFailure());
+    final container = _container(service);
+    await container.read(responderAuthViewModelProvider.future);
+    expect(
+      await container.read(responderAuthViewModelProvider.notifier).signOut(),
+      isNull,
+    );
     expect(container.read(responderAuthViewModelProvider).value, isNull);
   });
 

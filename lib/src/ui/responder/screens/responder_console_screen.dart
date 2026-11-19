@@ -66,20 +66,7 @@ class ResponderConsoleScreen extends ConsumerWidget {
                 ],
               ),
             ),
-            OutlinedButton(
-              // Signing out ends duty on the server too.
-              onPressed: activePing
-                  ? null
-                  : () => ref
-                        .read(responderAuthViewModelProvider.notifier)
-                        .signOut(),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: context.palette.textPrimary,
-                side: BorderSide(color: context.palette.border),
-                shape: const StadiumBorder(),
-              ),
-              child: const Text('Sign out'),
-            ),
+            _SignOutButton(enabled: !activePing),
           ],
         ),
         const SizedBox(height: 16),
@@ -138,6 +125,64 @@ Future<void> _switchToCitizen(
   if (!context.mounted) return;
   ref.read(roleProvider.notifier).choose(AppRole.citizen);
   context.go(AppRoute.home);
+}
+
+/// Signs out once the server confirms (which also ends duty there),
+/// showing progress meanwhile and staying put if it fails.
+class _SignOutButton extends ConsumerStatefulWidget {
+  const _SignOutButton({required this.enabled});
+
+  final bool enabled;
+
+  @override
+  ConsumerState<_SignOutButton> createState() => _SignOutButtonState();
+}
+
+class _SignOutButtonState extends ConsumerState<_SignOutButton> {
+  bool _signingOut = false;
+
+  Future<void> _signOut() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _signingOut = true);
+    final message = await ref
+        .read(responderAuthViewModelProvider.notifier)
+        .signOut();
+    if (!mounted) return;
+    setState(() => _signingOut = false);
+    if (message != null) {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+    return OutlinedButton(
+      onPressed: widget.enabled && !_signingOut ? _signOut : null,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: palette.textPrimary,
+        side: BorderSide(color: palette.border),
+        shape: const StadiumBorder(),
+      ),
+      child: _signingOut
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: palette.textSecondary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text('Signing out…'),
+              ],
+            )
+          : const Text('Sign out'),
+    );
+  }
 }
 
 /// The dispatch queue: red while anything is waiting.
