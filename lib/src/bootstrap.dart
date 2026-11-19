@@ -15,10 +15,12 @@ import 'app.dart';
 import 'core/config/app_config.dart';
 import 'data/network/api_client.dart' show apiClientName;
 import 'data/network/cookie_jar_provider.dart';
+import 'data/repositories/role_repository.dart';
 import 'data/repositories/theme_repository.dart';
 import 'data/services/analytics_service.dart';
 import 'data/services/crash_reporting_service.dart';
 import 'data/services/kpi_tracker.dart';
+import 'ui/core/view_model/role_view_model.dart';
 import 'ui/core/view_model/theme_mode_view_model.dart';
 
 /// dev and staging both live in the `rescue-staging` Firebase project (as
@@ -53,6 +55,7 @@ Future<void> bootstrap(AppConfig config) async {
   MapboxOptions.setAccessToken(config.mapboxAccessToken);
   final cookieJar = await createCookieJar();
   final themeMode = await ThemeRepository().load();
+  final role = await RoleRepository().load();
   final appVersion = config.analyticsEnabled
       ? await _analyticsVersion(config)
       : '';
@@ -69,6 +72,7 @@ Future<void> bootstrap(AppConfig config) async {
         cookieJarProvider.overrideWithValue(cookieJar),
         crashReportingServiceProvider.overrideWithValue(crashReporting),
         initialThemeModeProvider.overrideWithValue(themeMode),
+        initialRoleProvider.overrideWithValue(role),
         kpiTrackerProvider.overrideWithValue(kpiTracker),
         posthogProvider.overrideWithValue(posthog),
       ],

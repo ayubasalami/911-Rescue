@@ -46,6 +46,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // A fresh install asks who the app is for first.
+    expect(find.text('Continue as citizen'), findsOneWidget);
+    expect(find.text('Continue as responder'), findsOneWidget);
+    await tester.tap(find.text('Continue as citizen'));
+    await tester.pumpAndSettle();
+
     expect(find.text('🚨'), findsOneWidget);
     expect(find.textContaining('Rescue', findRichText: true), findsWidgets);
 

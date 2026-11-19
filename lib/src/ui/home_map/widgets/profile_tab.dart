@@ -2,11 +2,13 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/app_user.dart';
+import '../../../routing/app_router.dart';
 import '../../core/view_model/auth_view_model.dart';
 import '../../core/view_model/theme_mode_view_model.dart';
 import '../../core/widgets/confirm_logout_dialog.dart';
@@ -47,6 +49,15 @@ class ProfileTab extends ConsumerWidget {
         ),
         const Divider(height: 1),
         const EmergencyProfileSheet(embedded: true),
+        const Divider(height: 1),
+        // Saved as a responder's device only once they've signed in.
+        ListTile(
+          leading: const Icon(Icons.local_police_outlined),
+          title: const Text('Switch to responder'),
+          subtitle: const Text('Sign in with your responder ID'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => context.go(AppRoute.responder),
+        ),
       ],
     );
   }
