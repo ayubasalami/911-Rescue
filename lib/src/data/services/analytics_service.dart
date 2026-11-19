@@ -2,7 +2,9 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 
+import '../models/app_user.dart';
 import 'kpi_tracker.dart';
 
 /// Thin wrapper around [FirebaseAnalytics.instance].
@@ -15,20 +17,29 @@ import 'kpi_tracker.dart';
 /// `adb shell setprop debug.firebase.analytics.app <application id>`
 /// (see README). Debug-mode events are kept out of the normal reports.
 class AnalyticsService {
-  AnalyticsService(this._analytics, {this._kpi});
+  AnalyticsService(this._analytics, {this._kpi, this._posthog});
 
-  factory AnalyticsService.create({KpiTracker? kpi}) {
+  factory AnalyticsService.create({KpiTracker? kpi, Posthog? posthog}) {
     final analytics = Firebase.apps.isNotEmpty
         ? FirebaseAnalytics.instance
         : null;
     analytics?.setAnalyticsCollectionEnabled(true);
-    return AnalyticsService(analytics, kpi: kpi);
+    return AnalyticsService(analytics, kpi: kpi, posthog: posthog);
   }
 
   final FirebaseAnalytics? _analytics;
 
   /// Null where tracking is off (dev builds, tests).
   final KpiTracker? _kpi;
+  final Posthog? _posthog;
+
+  /// Visit bookkeeping for the KPI dashboard; PostHog keeps its own.
+  static const _kpiOnly = {
+    'session_start',
+    'app_open',
+    'heartbeat',
+    'screen_view',
+  };
 
   NavigatorObserver get observer {
     final analytics = _analytics;
@@ -51,8 +62,47 @@ class AnalyticsService {
   /// spec (`MOBILE_TRACKING_SPEC.md`), for its KPI dashboard. Same privacy
   /// rule as [logEvent]: no locations, search or symptom text, medical
   /// details or contact data.
-  void track(String name, [Map<String, Object>? props]) =>
-      _kpi?.track(name, props);
+  void track(String name, [Map<String, Object>? props]) {
+    _kpi?.track(name, props);
+    if (_kpiOnly.contains(name)) return;
+    _quietly(_posthog?.capture(eventName: name, properties: props), name);
+  }
+
+  /// A main screen shown: PostHog's screen view and the dashboard's
+  /// `screen_view`.
+  void screen(String name) {
+    _quietly(_posthog?.screen(screenName: name), 'screen');
+    _kpi?.track('screen_view', {'screen': name});
+  }
+
+  /// Signed in, now or from a saved session: one PostHog profile per person
+  /// across web and mobile, by email only.
+  void identify(AppUser user) {
+    _kpi?.signedIn = true;
+    _quietly(
+      _posthog?.identify(
+        userId: user.email,
+        userProperties: {'email': user.email, 'name': user.name ?? ''},
+      ),
+      'identify',
+    );
+  }
+
+  void signedOut() {
+    _kpi?.signedIn = false;
+    _quietly(_posthog?.reset(), 'reset');
+  }
+
+  /// After [AnalyticsEvents.accountDeleted]: sends what's queued under the
+  /// old install id, then starts a new one.
+  Future<void> accountDeleted() async {
+    await _kpi?.flush();
+    signedOut();
+    await _kpi?.resetIdentity();
+  }
+
+  void _quietly(Future<void>? call, String name) =>
+      call?.catchError((Object e) => debugPrint('[posthog] $name: $e'));
 
   /// Tie later events to an account. An internal id only (never PII);
   /// `null` clears it on sign-out.
@@ -65,7 +115,11 @@ class AnalyticsService {
 
 /// Overridden in `bootstrap()` when [AppConfig.analyticsEnabled].
 final kpiTrackerProvider = Provider<KpiTracker?>((ref) => null);
+final posthogProvider = Provider<Posthog?>((ref) => null);
 
 final analyticsServiceProvider = Provider<AnalyticsService>((ref) {
-  return AnalyticsService.create(kpi: ref.watch(kpiTrackerProvider));
+  return AnalyticsService.create(
+    kpi: ref.watch(kpiTrackerProvider),
+    posthog: ref.watch(posthogProvider),
+  );
 });

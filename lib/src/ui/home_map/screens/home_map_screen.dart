@@ -248,11 +248,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       _moveSheet(expanded ? 0 : homeSheetHalfSize);
       return;
     }
-    final analytics = ref.read(analyticsServiceProvider);
-    analytics.logEvent(
-      AnalyticsEvents.homeTabOpened,
-      parameters: {'tab': tab.name},
-    );
+    final analytics = ref.read(analyticsServiceProvider)
+      ..logEvent(AnalyticsEvents.homeTabOpened, parameters: {'tab': tab.name})
+      ..screen(tab.name);
     if (tab == HomeTab.chat) {
       analytics.logEvent(AnalyticsEvents.triageChatOpened);
     }
@@ -262,7 +260,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   }
 
   void _openSearch() {
-    ref.read(analyticsServiceProvider).logEvent(AnalyticsEvents.searchOpened);
+    ref.read(analyticsServiceProvider)
+      ..logEvent(AnalyticsEvents.searchOpened)
+      ..screen('search');
     _showInSheet(null, size: 1);
     _searchFocusNode.requestFocus();
   }
@@ -724,6 +724,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     ref
         .read(analyticsServiceProvider)
         .logEvent(AnalyticsEvents.call112, parameters: {'source': source});
+    ref.read(analyticsServiceProvider).track('call_112_click', {
+      'source': source,
+    });
     _viewModel.closeSosMenu();
     final uri = Uri(scheme: 'tel', path: '112');
     try {
@@ -805,6 +808,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// shows that facility on the map, a saved facility's Navigate opens
   /// the Route Planner to it — the web's `/?view=` and `/?nav=`.
   Future<void> _openDashboard() async {
+    ref.read(analyticsServiceProvider).screen('dashboard');
     final request = await context.push<DashboardRequest>(AppRoute.dashboard);
     if (request == null || !mounted) return;
     final facility = _facilityFor(request);
@@ -860,6 +864,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           AnalyticsEvents.facilitySaved,
           parameters: {'saved': '$saved', 'category': facility.category.name},
         );
+    if (saved) {
+      ref.read(analyticsServiceProvider).track('facility_saved', {
+        'facility_category': facility.categoryLabel,
+      });
+    }
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -1128,6 +1137,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       onStartPinTap: _onStartPinTapped,
       onDestinationTap: _onDestinationTapped,
     );
+    ref.read(analyticsServiceProvider)
+      ..track('map_load')
+      ..screen('map');
     final state = ref.read(homeMapViewModelProvider).value;
     await _mapController.syncFacilityPins(
       _facilitiesToRender(state),

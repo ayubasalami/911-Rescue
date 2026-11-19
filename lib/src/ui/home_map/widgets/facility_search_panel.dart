@@ -71,6 +71,10 @@ class _FacilitySearchPanelState extends ConsumerState<FacilitySearchPanel> {
   Future<void> _search(String query) async {
     final trimmed = query.trim();
     if (trimmed.length < 2) return;
+    // The length only — never the text.
+    ref.read(analyticsServiceProvider).track('search_query', {
+      'query_length': trimmed.length,
+    });
     setState(() {
       _loading = true;
       _searchFailed = false;

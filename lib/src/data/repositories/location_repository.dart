@@ -1,5 +1,6 @@
 import 'dart:async' show TimeoutException;
 
+import '../services/analytics_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -33,15 +34,36 @@ class LocationResult {
 }
 
 final locationRepositoryProvider = Provider<LocationRepository>((ref) {
-  return LocationRepository(ref.watch(locationServiceProvider));
+  return LocationRepository(
+    ref.watch(locationServiceProvider),
+    analytics: ref.watch(analyticsServiceProvider),
+  );
 });
 
 class LocationRepository {
-  LocationRepository(this._service);
+  LocationRepository(this._service, {this._analytics});
 
   final LocationService _service;
+  final AnalyticsService? _analytics;
 
+  /// Every lookup counts toward the dashboard's GPS success rate.
   Future<LocationResult> currentPosition() async {
+    final result = await _locate();
+    if (result.position != null) {
+      _analytics?.track('gps_success');
+    } else {
+      _analytics?.track('gps_fail', {
+        'reason': switch (result.status) {
+          LocationAccessStatus.timedOut => 'timeout',
+          LocationAccessStatus.serviceDisabled => 'unavailable',
+          _ => 'denied',
+        },
+      });
+    }
+    return result;
+  }
+
+  Future<LocationResult> _locate() async {
     if (!await _service.isLocationServiceEnabled()) {
       return const LocationResult.unavailable(
         LocationAccessStatus.serviceDisabled,

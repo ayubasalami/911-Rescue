@@ -582,12 +582,29 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     unawaited(ref.read(interactionServiceProvider).log(facility, type));
   }
 
-  void _logRouteStarted(String source, {FacilityCategory? category}) =>
-      _log(AnalyticsEvents.routeStarted, {
-        'source': source,
-        'mode':
-            (state.value?.selectedTransportMode ?? TransportMode.driving).name,
-        'category': ?category?.name,
+  void _logRouteStarted(
+    String source,
+    DirectionsRoute route, {
+    FacilityCategory? category,
+    TransportMode? mode,
+  }) {
+    final travel =
+        mode ?? state.value?.selectedTransportMode ?? TransportMode.driving;
+    _log(AnalyticsEvents.routeStarted, {
+      'source': source,
+      'mode': travel.name,
+      'category': ?category?.name,
+    });
+    _trackRouteShown(route, travel);
+  }
+
+  /// The KPI dashboard's `route_calculated`: directions shown to the user.
+  void _trackRouteShown(DirectionsRoute route, TransportMode mode) =>
+      ref.read(analyticsServiceProvider).track('route_calculated', {
+        'mode': mode.backendMode,
+        'duration_sec': route.durationSeconds.round(),
+        'distance_m': route.distanceMeters.round(),
+        'routing_source': route.source ?? 'mapbox',
       });
 
   void _setError(String message) =>
@@ -687,6 +704,12 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   /// list the whole time.
   void selectFacility(Facility facility) {
     _log(AnalyticsEvents.facilityViewed, {'category': facility.category.name});
+    if (!facility.isPlace) {
+      ref.read(analyticsServiceProvider).track('facility_card_open', {
+        'facility_name': facility.name,
+        'facility_category': facility.categoryLabel,
+      });
+    }
     _cancelTracking();
     _update(
       (s) => s.copyWith(
@@ -1136,7 +1159,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
     }
 
     final destination = RoutePoint.fromFacility(nearest);
-    _logRouteStarted('get_help', category: category);
+    _logRouteStarted('get_help', route, category: category);
     logInteraction(nearest, FacilityInteraction.navigated);
     _update(
       (s) => s.copyWith(
@@ -1249,7 +1272,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       return;
     }
 
-    _logRouteStarted(analyticsSource, category: facility.category);
+    _logRouteStarted(analyticsSource, route, category: facility.category);
     logInteraction(facility, FacilityInteraction.navigated);
     _update(
       (s) => s.copyWith(
@@ -1308,7 +1331,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       return;
     }
 
-    _logRouteStarted('route_planner');
+    _logRouteStarted('route_planner', route, mode: mode);
     // Only a facility destination — a dropped pin or searched place isn't
     // dashboard activity.
     final facilities = state.value?.facilities ?? const <Facility>[];
@@ -1380,6 +1403,9 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         longitude: destination.longitude,
       ),
     );
+    if (route != null) {
+      _trackRouteShown(route, current.selectedTransportMode);
+    }
     _update(
       (s) => s.copyWith(
         goToHelpRoute: route ?? s.goToHelpRoute,

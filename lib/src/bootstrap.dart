@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:posthog_flutter/posthog_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options_dev.dart' as dev_firebase;
@@ -52,8 +53,14 @@ Future<void> bootstrap(AppConfig config) async {
   MapboxOptions.setAccessToken(config.mapboxAccessToken);
   final cookieJar = await createCookieJar();
   final themeMode = await ThemeRepository().load();
+  final appVersion = config.analyticsEnabled
+      ? await _analyticsVersion(config)
+      : '';
   final kpiTracker = config.analyticsEnabled
-      ? await _startKpiTracker(config)
+      ? await _startKpiTracker(config, appVersion)
+      : null;
+  final posthog = config.analyticsEnabled
+      ? await _startPostHog(config, appVersion)
       : null;
   runApp(
     ProviderScope(
@@ -63,27 +70,68 @@ Future<void> bootstrap(AppConfig config) async {
         crashReportingServiceProvider.overrideWithValue(crashReporting),
         initialThemeModeProvider.overrideWithValue(themeMode),
         kpiTrackerProvider.overrideWithValue(kpiTracker),
+        posthogProvider.overrideWithValue(posthog),
       ],
       child: const App(),
     ),
   );
 }
 
-/// The backend's KPI tracker, with the version staging builds report under
-/// (`-staging`) so the dashboard can filter test use out.
-Future<KpiTracker> _startKpiTracker(AppConfig config) async {
+/// The app version analytics report, with `-staging` on staging builds so
+/// test use can be filtered out.
+Future<String> _analyticsVersion(AppConfig config) async {
   final info = await PackageInfo.fromPlatform();
+  return config.environment == AppEnvironment.staging
+      ? '${info.version}-staging'
+      : info.version;
+}
+
+/// The backend's KPI tracker.
+Future<KpiTracker> _startKpiTracker(AppConfig config, String appVersion) async {
   final view = PlatformDispatcher.instance.views.first;
   final shortestSide = view.physicalSize.shortestSide / view.devicePixelRatio;
   final tracker = KpiTracker(
     dio: Dio(BaseOptions(baseUrl: config.apiBaseUrl)),
     prefs: await SharedPreferences.getInstance(),
     platform: apiClientName,
-    appVersion: config.environment == AppEnvironment.staging
-        ? '${info.version}-staging'
-        : info.version,
+    appVersion: appVersion,
     device: shortestSide >= 600 ? 'tablet' : 'mobile',
   )..load();
   tracker.start();
   return tracker;
+}
+
+/// The web app's PostHog project, set up as the backend's tracking spec
+/// asks: named events only, no session replay (screens can show medical
+/// details and live locations), and profiles for signed-in users only.
+Future<Posthog?> _startPostHog(AppConfig config, String appVersion) async {
+  if (config.posthogApiKey.isEmpty) return null;
+  final posthogConfig = PostHogConfig(config.posthogApiKey)
+    ..host = config.posthogHost
+    ..captureApplicationLifecycleEvents = true
+    ..personProfiles = PostHogPersonProfiles.identifiedOnly
+    ..sessionReplay = false
+    ..surveys = false
+    ..preloadFeatureFlags = false
+    ..capturePushNotificationSubscriptions = false
+    ..capturePushNotificationOpened = false
+    ..debug = kDebugMode;
+  final posthog = Posthog();
+  try {
+    await posthog.setup(posthogConfig);
+    await posthog.register('platform', apiClientName);
+    await posthog.register('app', 'mobile');
+    await posthog.register('app_version', appVersion);
+    if (config.environment == AppEnvironment.staging) {
+      await posthog.register('env', 'staging');
+    }
+  } catch (e) {
+    debugPrint('[posthog] setup: $e');
+    return null;
+  }
+  // Sends what's queued before the OS can suspend the app.
+  AppLifecycleListener(
+    onPause: () => posthog.flush().catchError((Object _) {}),
+  );
+  return posthog;
 }

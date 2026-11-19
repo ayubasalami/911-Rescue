@@ -406,6 +406,10 @@ class _PlaceSearchFieldState extends ConsumerState<_PlaceSearchField> {
   Future<void> _search(String query) async {
     final trimmed = query.trim();
     if (trimmed.length < 2) return;
+    // The length only — never the text.
+    ref.read(analyticsServiceProvider).track('search_query', {
+      'query_length': trimmed.length,
+    });
     setState(() => _loading = true);
     // Facility matches first, then general places from OpenStreetMap —
     // same order as the web. Either source failing just drops its half.

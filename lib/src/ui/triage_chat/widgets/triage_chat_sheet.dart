@@ -5,6 +5,7 @@ import '../../../core/result.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../data/models/ping.dart';
 import '../../../data/models/triage.dart';
+import '../../../data/services/analytics_service.dart';
 import '../../../data/services/triage_service.dart';
 import '../../core/widgets/app_filter_chip.dart';
 
@@ -109,6 +110,14 @@ class _TriageChatSheetState extends ConsumerState<TriageChatSheet> {
       switch (result) {
         case Ok(:final value):
           _messages.add(_AssessmentEntry(value));
+          // The assessment, never the symptom text.
+          ref.read(analyticsServiceProvider).track('triage_submit', {
+            'source': value.source == TriageSource.local ? 'local' : 'groq',
+            'agency': ?value.agency?.apiValue,
+            'urgency': value.urgency,
+            'is_emergency': value.isEmergency,
+            'sensitive': value.sensitive,
+          });
         case Err(:final failure):
           _messages.add(_ErrorEntry(failure.userMessage));
       }

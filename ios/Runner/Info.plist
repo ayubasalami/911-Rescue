@@ -38,6 +38,8 @@
 	</array>
 	<!-- HTTPS only, which is exempt — saves the export compliance question
 	     on every App Store Connect upload. -->
+	<key>com.posthog.posthog.AUTO_INIT</key>
+	<false/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>

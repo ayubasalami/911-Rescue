@@ -263,6 +263,10 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
   }
 
   void _startPing(_HelpCategory category) {
+    ref.read(analyticsServiceProvider).track('get_help_ping', {
+      'agency': category.pingAgency.apiValue,
+      'dropped_pin': widget.isPinnedLocation,
+    });
     setState(() {
       _pingCategory = category;
       _pingCardExpanded = true;
@@ -648,6 +652,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
     ref
         .read(analyticsServiceProvider)
         .logEvent(AnalyticsEvents.call112, parameters: {'source': 'get_help'});
+    ref.read(analyticsServiceProvider).track('call_112_click', {
+      'source': 'get_help',
+    });
     final uri = Uri(scheme: 'tel', path: '112');
     try {
       final launched = await launchUrl(uri);
@@ -777,9 +784,15 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
                         ? null
                         : _mode == _HelpMode.ping
                         ? () => _startPing(category)
-                        : () => widget.onGoToHelp?.call(
-                            category.facilityCategory,
-                          ),
+                        : () {
+                            ref
+                                .read(analyticsServiceProvider)
+                                .track('get_help_go', {
+                                  'agency': category.pingAgency.apiValue,
+                                  'dropped_pin': widget.isPinnedLocation,
+                                });
+                            widget.onGoToHelp?.call(category.facilityCategory);
+                          },
                     child: Container(
                       decoration: BoxDecoration(
                         color: context.palette.backgroundCanvas,

@@ -17,8 +17,16 @@ class AuthViewModel extends AsyncNotifier<AppUser?> {
   AuthRepository get _repository => ref.read(authRepositoryProvider);
 
   @override
-  Future<AppUser?> build() async =>
-      (await _repository.currentUser()).valueOrNull;
+  Future<AppUser?> build() async {
+    final user = (await _repository.currentUser()).valueOrNull;
+    final analytics = ref.read(analyticsServiceProvider);
+    if (user != null) {
+      analytics.identify(user);
+    } else {
+      analytics.signedOut();
+    }
+    return user;
+  }
 
   /// Returns a message to show the user, or null when there's nothing to
   /// say (signed in, or the picker was closed).
@@ -34,6 +42,9 @@ class AuthViewModel extends AsyncNotifier<AppUser?> {
       case SignedIn(:final user):
         state = AsyncData(user);
         _log(AnalyticsEvents.login, {'method': method});
+        ref.read(analyticsServiceProvider)
+          ..identify(user)
+          ..track('sign_in', {'provider': method});
         return null;
       case SignInCancelled():
         return null;
@@ -50,6 +61,9 @@ class AuthViewModel extends AsyncNotifier<AppUser?> {
       case Ok():
         state = const AsyncData(null);
         _log(AnalyticsEvents.accountDeleted);
+        final analytics = ref.read(analyticsServiceProvider)
+          ..track('account_deleted');
+        await analytics.accountDeleted();
         await ref
             .read(savedFacilitiesViewModelProvider.notifier)
             .forgetAccount();
@@ -62,6 +76,9 @@ class AuthViewModel extends AsyncNotifier<AppUser?> {
   Future<void> signOut() async {
     state = const AsyncData(null);
     _log(AnalyticsEvents.logout);
+    ref.read(analyticsServiceProvider)
+      ..track('sign_out')
+      ..signedOut();
     await _repository.signOut();
   }
 
