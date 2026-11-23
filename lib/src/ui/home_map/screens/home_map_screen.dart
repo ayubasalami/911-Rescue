@@ -1228,8 +1228,18 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       );
     }
     final selection = state?.originSelection;
-    if (selection == null || selection.followsUser) return null;
-    return selection.point;
+    if (selection != null) {
+      return selection.followsUser ? null : selection.point;
+    }
+    // An analysis run from a dropped pin keeps the pin, so its areas and
+    // route to the nearest facility visibly start somewhere.
+    if (state != null &&
+        state.activeAnalysis != null &&
+        state.analysisOnMap &&
+        !state.activeAnalysisFollowsUser) {
+      return state.activeAnalysisOrigin;
+    }
+    return null;
   }
 
   Future<void> _onMapCreated(mapbox.MapboxMap mapboxMap) async {
