@@ -126,14 +126,6 @@ class ResponderConsoleViewModel extends Notifier<ResponderConsoleState> {
     }
   }
 
-  /// Before switching to the citizen side: sharing stops once the console
-  /// is gone, so dispatch mustn't keep counting on this responder.
-  Future<void> goOffDuty() async {
-    final responder = ref.read(responderAuthViewModelProvider).value;
-    if (responder == null || !responder.onDuty) return;
-    await toggleDuty();
-  }
-
   Future<void> _startSharing() async {
     if (_sharing) return;
     _sharing = true;

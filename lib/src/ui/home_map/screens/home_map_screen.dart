@@ -101,6 +101,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   final ValueNotifier<Offset?> _popupAnchor = ValueNotifier(null);
   final ValueNotifier<bool> _pingActive = ValueNotifier(false);
 
+  /// Measures Get Help Fast's panel, so the map can keep the location
+  /// it's for in the clear space above it.
+  final GlobalKey _helpPanelKey = GlobalKey();
+  final GlobalKey _bodyKey = GlobalKey();
+
   /// Drives [ZoomInHint] — kept in a `ValueNotifier` for the same reason as
   /// [_popupAnchor]: it changes on nearly every frame during a pinch/pan
   /// gesture, and routing that through `setState` would rebuild the whole
@@ -242,6 +247,13 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   }
 
   void _onTabTapped(HomeTab tab) {
+    // Get Help Fast has the screen to itself until a tab asks for it back.
+    if (_getHelpCoversSheet) {
+      _clearPopup();
+      _showInSheet(tab, size: tab == HomeTab.chat ? 1 : homeSheetHalfSize);
+      if (tab == HomeTab.discover) unawaited(_runDiscoverAnalysis());
+      return;
+    }
     if (tab == _tab && !_sheetHidden) {
       final expanded =
           _sheetController.isAttached &&
@@ -311,6 +323,87 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       ),
     );
     if (!mounted) return;
+    final anchor = await _mapController.pixelForCoordinate(point);
+    if (!mounted) return;
+    _popupAnchor.value = anchor;
+  }
+
+  /// Launch and Home: Get Help Fast at the user's location, the fewest taps
+  /// from opening the app to asking for help.
+  Future<void> _getHelpAtUser() async {
+    if (ref.read(homeMapViewModelProvider).value?.goToHelpRoute != null) {
+      await _recenterOnUser();
+      return;
+    }
+    final point = await _viewModel.recenterOnUser();
+    if (point == null || !mounted) return;
+    _viewModel.openGetHelpFast();
+    await _frameGetHelp();
+  }
+
+  void _openGetHelpFast() {
+    _viewModel.openGetHelpFast();
+    unawaited(_frameGetHelp());
+  }
+
+  /// Get Help Fast without a ping on its way: it stands in for the sheet,
+  /// so the two don't show at once.
+  bool get _getHelpCoversSheet {
+    final state = ref.read(homeMapViewModelProvider).value;
+    return state?.originSelection != null &&
+        state!.showGetHelpFast &&
+        !_pingActive.value;
+  }
+
+  /// Puts Get Help Fast's location in the map left above its panel, so
+  /// the user can check it's right while asking for help.
+  Future<void> _frameGetHelp() async {
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    final state = ref.read(homeMapViewModelProvider).value;
+    final origin = state?.originSelection;
+    if (origin == null || !state!.showGetHelpFast) return;
+    final panel =
+        _helpPanelKey.currentContext?.findRenderObject() as RenderBox?;
+    final body = _bodyKey.currentContext?.findRenderObject() as RenderBox?;
+    if (panel == null || body == null || !panel.hasSize || !body.hasSize) {
+      return;
+    }
+    final mapHeight = body.size.height;
+    final panelTop = panel.localToGlobal(Offset.zero, ancestor: body).dy;
+    var bottom = (mapHeight - panelTop).clamp(0.0, mapHeight);
+    // Clear of the title bar and filter chips where there's room for it.
+    var top = MediaQuery.paddingOf(context).top + 130;
+    if (mapHeight - bottom - top < 120) top = 0;
+    if (mapHeight - bottom - top < 60) bottom = mapHeight - top - 60;
+    final size = MediaQuery.sizeOf(context);
+    await _mapController.flyTo(
+      origin.point,
+      topInset: top,
+      bottomInset: bottom,
+      zoom: origin.followsUser
+          ? zoomForRadius(
+              latitude: origin.point.latitude,
+              radiusMeters: _myLocationRadiusMeters,
+              viewportWidth: size.shortestSide,
+            )
+          : null,
+    );
+    if (!mounted) return;
+    final anchor = await _mapController.pixelForCoordinate(origin.point);
+    if (!mounted) return;
+    _popupAnchor.value = anchor;
+  }
+
+  /// "Back to pin": the origin card again, anchored where its point is now.
+  Future<void> _closeGetHelpFast() async {
+    _viewModel.closeGetHelpFast();
+    final point = ref
+        .read(homeMapViewModelProvider)
+        .value
+        ?.originSelection
+        ?.point;
+    if (point == null) return;
     final anchor = await _mapController.pixelForCoordinate(point);
     if (!mounted) return;
     _popupAnchor.value = anchor;
@@ -704,12 +797,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _pendingSosCategory = null);
     });
-
-    await _mapController.flyTo(origin);
-    if (!mounted) return;
-    final anchor = await _mapController.pixelForCoordinate(origin);
-    if (!mounted) return;
-    _popupAnchor.value = anchor;
+    await _frameGetHelp();
   }
 
   /// Begins live GPS tracking for the active route — the web platform's
@@ -1156,14 +1244,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       _facilitiesToRender(state),
       state?.selectedFilter,
     );
+    // Back from the responder side the map is new but a card may still be
+    // open: put it back on its point.
+    unawaited(_syncPopupAnchor());
     // The web opens the tutorial on a first visit shortly after the map is
     // ready, rather than over a blank screen.
     if (isTestEnvironment) return;
     await Future<void>.delayed(const Duration(milliseconds: 700));
     if (!mounted) return;
     // After the tutorial (first visit only) closes, so the two don't stack:
-    // the user's surroundings with the Your Location card and its Get Help
-    // Fast, unless they've already started something.
+    // Get Help Fast at the user's location, unless they've already started
+    // something.
     await showHowToUseIfFirstVisit(context);
     final current = ref.read(homeMapViewModelProvider).value;
     if (!mounted ||
@@ -1174,7 +1265,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         current.showRoutePlanner) {
       return;
     }
-    await _recenterOnUser();
+    await _getHelpAtUser();
   }
 
   @override
@@ -1301,16 +1392,22 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     // Navigation keeps the map clear: the planning controls, legend and
     // most buttons hide until it stops.
     final tracking = state?.goToHelpTracking ?? false;
+    final getHelpOpen =
+        state?.originSelection != null && state!.showGetHelpFast;
     final mapAnalysis = (state?.analysisOnMap ?? false)
         ? state?.activeAnalysis
         : null;
 
     return Scaffold(
-      bottomNavigationBar: HomeTabBar(
-        selected: _sheetHidden ? null : _tab,
-        onTap: _onTabTapped,
+      bottomNavigationBar: ValueListenableBuilder<bool>(
+        valueListenable: _pingActive,
+        builder: (context, pinging, _) => HomeTabBar(
+          selected: _sheetHidden || (getHelpOpen && !pinging) ? null : _tab,
+          onTap: _onTabTapped,
+        ),
       ),
       body: Stack(
+        key: _bodyKey,
         children: [
           Positioned.fill(
             child: homeMapAsync.maybeWhen(
@@ -1463,7 +1560,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       color: context.palette.textPrimary,
                       size: _controlIconSize,
                     ),
-                    onTap: _recenterOnUser,
+                    onTap: _getHelpAtUser,
                   ),
                   const SizedBox(height: 8),
                   MapControlButton(
@@ -1573,21 +1670,22 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             Positioned.fill(
               child: ValueListenableBuilder<bool>(
                 valueListenable: _pingActive,
+                // Docked at the bottom, so the location it's for stays in
+                // view above it (see _frameGetHelp).
                 builder: (context, pinging, child) => Align(
-                  alignment: pinging
-                      ? Alignment.bottomCenter
-                      : Alignment.center,
+                  alignment: Alignment.bottomCenter,
                   child: Padding(
                     padding: EdgeInsets.only(
-                      bottom: pinging ? homeSheetPeekHeight + 16 : 0,
+                      bottom: pinging ? homeSheetPeekHeight + 16 : 12,
                     ),
                     child: child,
                   ),
                 ),
                 child: ConstrainedBox(
+                  key: _helpPanelKey,
                   constraints: BoxConstraints(
                     maxWidth: 340,
-                    maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.62,
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1595,10 +1693,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       child: GetHelpSheet(
                         isPinnedLocation: !state.originSelection!.followsUser,
                         onDismiss: _clearPopup,
-                        onBack: _viewModel.closeGetHelpFast,
+                        onBack: () => unawaited(_closeGetHelpFast()),
                         origin: state.originSelection!.point,
-                        onPingActiveChanged: (active) =>
-                            _pingActive.value = active,
+                        onPingActiveChanged: (active) {
+                          if (_pingActive.value == active) return;
+                          _pingActive.value = active;
+                          // The panel moves up for the sheet and changes
+                          // height, so keep the location above it.
+                          unawaited(_frameGetHelp());
+                        },
                         onResponderTrack: _showResponder,
                         onGoToHelp: _startGoToHelp,
                         initialPingCategory: _pendingSosCategory,
@@ -1612,7 +1715,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             ValueListenableBuilder<Offset?>(
               valueListenable: _popupAnchor,
               builder: (context, anchor, _) => anchor == null
-                  ? const SizedBox.shrink()
+                  ? const _Nowhere()
                   : _AnchoredPopup(
                       anchor: anchor,
                       child: AccessOriginPopup(
@@ -1624,7 +1727,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                           state.originSelection!.point,
                           followsUser: state.originSelection!.followsUser,
                         ),
-                        onGetHelpFast: _viewModel.openGetHelpFast,
+                        onGetHelpFast: _openGetHelpFast,
                         onClose: _clearPopup,
                       ),
                     ),
@@ -1633,7 +1736,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             ValueListenableBuilder<Offset?>(
               valueListenable: _popupAnchor,
               builder: (context, anchor, _) => anchor == null
-                  ? const SizedBox.shrink()
+                  ? const _Nowhere()
                   : _AnchoredPopup(
                       anchor: anchor,
                       child: FacilityPopupCard(
@@ -1768,8 +1871,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           // attaches its controller twice and loses Chat's conversation.
           Positioned.fill(
             key: const ValueKey('home-sheet'),
-            child: Offstage(
-              offstage: _sheetHidden,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: _pingActive,
+              builder: (context, pinging, sheet) => Offstage(
+                offstage: _sheetHidden || (getHelpOpen && !pinging),
+                child: sheet,
+              ),
               child: HomeSheet(
                 controller: _sheetController,
                 topInset: topInset,
@@ -1807,7 +1914,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             ValueListenableBuilder<Offset?>(
               valueListenable: _analysisPingAnchor,
               builder: (context, anchor, _) => anchor == null
-                  ? const SizedBox.shrink()
+                  ? const _Nowhere()
                   : Positioned(
                       left: anchor.dx - _AnalysisPing.size / 2,
                       top: anchor.dy - _AnalysisPing.size / 2,

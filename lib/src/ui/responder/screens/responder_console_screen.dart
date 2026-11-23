@@ -30,7 +30,7 @@ class ResponderConsoleScreen extends ConsumerWidget {
     final auth = ref.watch(responderAuthViewModelProvider);
     final console = ref.watch(responderConsoleViewModelProvider);
     // An accepted, unresolved ping keeps the responder on duty: no going
-    // off duty, signing out or switching to the citizen side until it's done.
+    // off duty or signing out until it's done.
     final activePing = ref.watch(
       responderQueueViewModelProvider.select((q) => q.hasActivePing),
     );
@@ -46,9 +46,13 @@ class ResponderConsoleScreen extends ConsumerWidget {
     }
     // An existing session (e.g. switching from the citizen side) makes this
     // device a responder's too.
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => ref.read(roleProvider.notifier).choose(AppRole.responder),
-    );
+    // Switching back to citizen is only offered on the sign-in screen, so
+    // a responder signs out first.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) {
+        ref.read(roleProvider.notifier).choose(AppRole.responder);
+      }
+    });
     return ConsolePage(
       children: [
         Row(
@@ -79,52 +83,9 @@ class ResponderConsoleScreen extends ConsumerWidget {
         _PingsSection(onDuty: responder.onDuty),
         const SizedBox(height: 16),
         const _HistorySection(),
-        const SizedBox(height: 16),
-        TextButton(
-          onPressed: activePing
-              ? null
-              : () => _switchToCitizen(context, ref, responder),
-          child: const Text('← Switch to citizen'),
-        ),
       ],
     );
   }
-}
-
-/// Location sharing stops once the console is gone, so an on-duty
-/// responder goes off duty first rather than look available to dispatch.
-Future<void> _switchToCitizen(
-  BuildContext context,
-  WidgetRef ref,
-  Responder responder,
-) async {
-  if (responder.onDuty) {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Go off duty?'),
-        content: const Text(
-          'Switching to the citizen side stops sharing your location, so '
-          'you\'ll go off duty and stop receiving emergency pings.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Go off duty'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await ref.read(responderConsoleViewModelProvider.notifier).goOffDuty();
-  }
-  if (!context.mounted) return;
-  ref.read(roleProvider.notifier).choose(AppRole.citizen);
-  context.go(AppRoute.home);
 }
 
 /// Signs out once the server confirms (which also ends duty there),

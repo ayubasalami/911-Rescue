@@ -949,6 +949,8 @@ class MapAnnotationController {
     double shiftDown = 0,
     double minZoom = 13,
     double? zoom,
+    double topInset = 0,
+    double bottomInset = 0,
   }) async {
     final map = _map;
     if (map == null) return;
@@ -967,14 +969,21 @@ class MapAnnotationController {
         // Top padding moves the camera's reference center down by half
         // its value. Always set explicitly (zero when not shifting) since
         // Mapbox keeps the last padding for later camera moves otherwise.
-        padding: _edgeInsets(top: shiftDown * 2),
+        // [topInset]/[bottomInset] instead centre the point in the strip
+        // of map left between chrome at the top and a panel at the bottom.
+        padding: _edgeInsets(
+          top: shiftDown * 2 + topInset,
+          bottom: bottomInset,
+        ),
       ),
       mapbox.MapAnimationOptions(duration: 800),
     );
   }
 
-  static mapbox.MbxEdgeInsets _edgeInsets({double top = 0}) =>
-      mapbox.MbxEdgeInsets(top: top, left: 0, bottom: 0, right: 0);
+  static mapbox.MbxEdgeInsets _edgeInsets({
+    double top = 0,
+    double bottom = 0,
+  }) => mapbox.MbxEdgeInsets(top: top, left: 0, bottom: bottom, right: 0);
 
   /// Zooms/pans to fit every point in [points] on screen at once — used for
   /// the Go to Help route overview, matching the web platform's zoom-out
