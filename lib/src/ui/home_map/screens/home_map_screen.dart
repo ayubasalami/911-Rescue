@@ -395,7 +395,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _popupAnchor.value = anchor;
   }
 
-  /// "Back to pin": the origin card again, anchored where its point is now.
+  /// "Back to my location" / "Back to pin": the origin card again, back in
+  /// the middle of the screen (Get Help Fast had moved its point up, above
+  /// the panel).
   Future<void> _closeGetHelpFast() async {
     _viewModel.closeGetHelpFast();
     final point = ref
@@ -404,6 +406,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         ?.originSelection
         ?.point;
     if (point == null) return;
+    await _mapController.flyTo(point, shiftDown: _popupShiftDown);
+    if (!mounted) return;
     final anchor = await _mapController.pixelForCoordinate(point);
     if (!mounted) return;
     _popupAnchor.value = anchor;

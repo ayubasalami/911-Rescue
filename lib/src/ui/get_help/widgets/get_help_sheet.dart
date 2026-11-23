@@ -878,7 +878,9 @@ class _GetHelpSheetState extends ConsumerState<GetHelpSheet> {
           width: double.infinity,
           child: AppButton(
             icon: Icons.arrow_back,
-            label: 'Back to pin',
+            label: widget.isPinnedLocation
+                ? 'Back to pin'
+                : 'Back to my location',
             variant: AppButtonVariant.secondary,
             onPressed:
                 widget.onBack ??
