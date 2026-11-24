@@ -21,7 +21,9 @@ import '../../../data/services/access_analysis_service.dart';
 import '../../../data/services/analytics_service.dart';
 import '../../../data/services/interaction_service.dart';
 import '../../../data/services/ping_service.dart';
+import '../../../data/services/compass_service.dart';
 import '../../../data/services/voice_directions_service.dart';
+import '../../../utils/heading_fusion.dart';
 import '../../../utils/route_progress.dart';
 import '../../../utils/turn_announcer.dart';
 import '../../../utils/triage_facility_picker.dart';
@@ -450,6 +452,11 @@ class HomeMapState {
 class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   StreamSubscription<TrackedPosition>? _trackingSubscription;
 
+  /// The phone's compass while navigating, for the heading when slow or
+  /// standing still (see [HeadingFusion]).
+  StreamSubscription<double>? _compassSubscription;
+  HeadingFusion _heading = HeadingFusion();
+
   /// When Start was tapped, for the arrival card's trip time.
   DateTime? _trackingStartedAt;
 
@@ -472,6 +479,7 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   Future<HomeMapState> build() {
     ref.onDispose(() {
       _trackingSubscription?.cancel();
+      _compassSubscription?.cancel();
       _cancelOffRouteTimers();
     });
     return _load();
@@ -652,6 +660,8 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
   void _cancelTracking() {
     _trackingSubscription?.cancel();
     _trackingSubscription = null;
+    _compassSubscription?.cancel();
+    _compassSubscription = null;
     _cancelOffRouteTimers();
     _offRouteStrikes = 0;
     _autoRecalculations = 0;
@@ -1481,6 +1491,17 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
         .read(locationRepositoryProvider)
         .positionStream()
         .listen(_onTrackedPosition);
+    _heading = HeadingFusion();
+    _compassSubscription = ref
+        .read(compassServiceProvider)
+        .headings()
+        .listen(_onCompass, onError: (Object _) {});
+  }
+
+  void _onCompass(double reading) {
+    final heading = _heading.onCompass(reading);
+    if (heading == null || !(state.value?.goToHelpTracking ?? false)) return;
+    _update((s) => s.copyWith(goToHelpHeading: heading));
   }
 
   /// Stops live tracking and reverts to the static route preview — the web
@@ -1510,11 +1531,14 @@ class HomeMapViewModel extends AsyncNotifier<HomeMapState> {
       return;
     }
 
-    // The GPS's heading, else the direction from the last fix once it's
-    // more than 8 m away; otherwise keep the last known one.
+    // GPS direction at driving speed, the compass when slower; without a
+    // compass, the direction from the last fix once it's more than 8 m
+    // away; otherwise keep the last known one.
     final last = _lastHeadingPoint;
     final moved = last != null && haversineMeters(last, tracked.point) > 8;
+    _heading.onGps(tracked.headingDegrees, tracked.speedMps);
     final heading =
+        _heading.current ??
         tracked.headingDegrees ??
         (moved ? bearingDegrees(last, tracked.point) : null);
     if (last == null || moved) _lastHeadingPoint = tracked.point;

@@ -369,6 +369,10 @@ class MapAnnotationController {
   /// The tracked "You are here" marker — on top of everything, and in place
   /// of the location puck while following a route.
   mapbox.PointAnnotationManager? _headingManager;
+
+  /// The dot and its "You are here" label, kept upright on screen however
+  /// the map turns (only the cone turns with the map).
+  mapbox.PointAnnotationManager? _headingDotManager;
   mapbox.PointAnnotation? _headingCone;
   mapbox.PointAnnotation? _headingDot;
   GeoPoint? _headingPoint;
@@ -388,6 +392,11 @@ class MapAnnotationController {
   double? _smoothedHeading;
   double? _followTarget;
   double _bearingSetByFollow = 0;
+  DateTime _holdFollowUntil = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _holdFollow(int animationMs) => _holdFollowUntil = DateTime.now().add(
+    Duration(milliseconds: animationMs + 150),
+  );
   double get bearingSetByFollow => _bearingSetByFollow;
   List<GeoPoint>? _lastBoundary;
 
@@ -562,6 +571,15 @@ class MapAnnotationController {
     await headingManager.setIconAllowOverlap(true);
     await headingManager.setIconIgnorePlacement(true);
     _headingManager = headingManager;
+    // Created after the cone's, so the dot draws on top of it.
+    final headingDotManager = await mapboxMap.annotations
+        .createPointAnnotationManager();
+    await headingDotManager.setIconRotationAlignment(
+      mapbox.IconRotationAlignment.VIEWPORT,
+    );
+    await headingDotManager.setIconAllowOverlap(true);
+    await headingDotManager.setIconIgnorePlacement(true);
+    _headingDotManager = headingDotManager;
 
     await _updateLocationPuck();
     // The theme may have changed while the map was being created.
@@ -642,6 +660,7 @@ class MapAnnotationController {
     _headingDot = null;
     _puckHidden = false;
     await _headingManager?.deleteAll();
+    await _headingDotManager?.deleteAll();
     if (headingPoint != null) {
       await syncHeadingMarker(headingPoint, headingDegrees);
     }
@@ -716,11 +735,13 @@ class MapAnnotationController {
 
   Future<void> _applyHeadingMarker(GeoPoint? point, double? heading) async {
     final manager = _headingManager;
+    final dotManager = _headingDotManager;
     final map = _map;
-    if (manager == null || map == null) return;
+    if (manager == null || dotManager == null || map == null) return;
 
     if (point == null) {
       await manager.deleteAll();
+      await dotManager.deleteAll();
       _headingCone = null;
       _headingDot = null;
       if (_puckHidden) {
@@ -769,13 +790,12 @@ class MapAnnotationController {
 
     if (_headingDot case final dot?) {
       dot.geometry = geometry;
-      await manager.update(dot);
+      await dotManager.update(dot);
     } else {
-      _headingDot = await manager.create(
+      _headingDot = await dotManager.create(
         mapbox.PointAnnotationOptions(
           geometry: geometry,
           iconImage: _headingDotImageId,
-          symbolSortKey: 1,
         ),
       );
     }
@@ -912,6 +932,9 @@ class MapAnnotationController {
   Future<void> followHeading(double heading) async {
     final map = _map;
     if (map == null || heading == _followTarget) return;
+    // Turning the map mid-animation would cut a fly-to short; the next
+    // heading after it lands turns it instead.
+    if (DateTime.now().isBefore(_holdFollowUntil)) return;
     _followTarget = heading;
     _smoothedHeading = _blendBearing(_smoothedHeading, heading);
     final target = _smoothedHeading!;
@@ -962,6 +985,7 @@ class MapAnnotationController {
     // easeTo, not flyTo: flyTo's arc zooms out mid-flight, dipping below
     // the marker threshold and back, which wiped and redrew every facility
     // marker during the animation.
+    _holdFollow(800);
     await map.easeTo(
       mapbox.CameraOptions(
         center: mapboxPointFrom(point),
@@ -1012,6 +1036,7 @@ class MapAnnotationController {
     // Clear any shift left over from [flyTo] — the fit above assumes an
     // unpadded view.
     camera.padding = _edgeInsets();
+    _holdFollow(800);
     await map.flyTo(camera, mapbox.MapAnimationOptions(duration: 800));
   }
 

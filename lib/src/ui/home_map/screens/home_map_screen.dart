@@ -1156,6 +1156,13 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   /// hides its card, the same as backing out of it any other way — only
   /// its own "Cancel ping" button actually cancels one server-side.
   Future<void> _clearActiveFeature() async {
+    // A route asks first, in its card, as the card's own close does.
+    final route = ref.read(homeMapViewModelProvider).value;
+    if (route?.goToHelpRoute != null) {
+      if (!route!.goToHelpCardExpanded) _viewModel.toggleGoToHelpCard();
+      _viewModel.requestCloseGoToHelp();
+      return;
+    }
     _viewModel.clearPopups();
     await _viewModel.cancelAnalysis();
     _viewModel.closeSosMenu();
@@ -1565,8 +1572,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                   ),
                   onTap: _recenterOnUser,
                 ),
-                // While navigating only Locate and the compass stay, so the
-                // route has the map.
+                // While navigating only Locate, Clear and the compass stay,
+                // so the route has the map.
                 if (!tracking) ...[
                   const SizedBox(height: 8),
                   MapControlButton(
@@ -1602,14 +1609,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     ),
                     onTap: _viewModel.toggleLegend,
                   ),
-                  const SizedBox(height: 8),
-                  MapControlButton(
-                    icon: MapControlIcon.clear.build(
-                      color: context.palette.danger,
-                      size: _controlIconSize,
-                    ),
-                    onTap: _clearActiveFeature,
+                ],
+                // Clear stays while navigating too, as on the web.
+                const SizedBox(height: 8),
+                MapControlButton(
+                  icon: MapControlIcon.clear.build(
+                    color: context.palette.danger,
+                    size: _controlIconSize,
                   ),
+                  onTap: _clearActiveFeature,
+                ),
+                if (!tracking) ...[
                   const SizedBox(height: 8),
                   MapControlButton(
                     icon: MapControlIcon.traffic.build(
@@ -1784,20 +1794,21 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           if (state != null &&
               state.goToHelpRoute != null &&
               state.goToHelpDestination != null) ...[
-            if (!tracking)
-              Positioned(
-                // The facility filter tabs' slot — hidden above while a
-                // route is active, so the mode bar takes it over instead.
-                top: 58 + topInset,
-                left: 16,
-                right: 16,
-                child: Center(
-                  child: GoToHelpModeBar(
-                    selectedMode: state.selectedTransportMode,
-                    onModeSelected: _changeGoToHelpMode,
-                  ),
+            // Also while navigating, as on the web: switching recalculates
+            // from the live position and carries on.
+            Positioned(
+              // The facility filter tabs' slot — hidden above while a
+              // route is active, so the mode bar takes it over instead.
+              top: 58 + topInset,
+              left: 16,
+              right: 16,
+              child: Center(
+                child: GoToHelpModeBar(
+                  selectedMode: state.selectedTransportMode,
+                  onModeSelected: _changeGoToHelpMode,
                 ),
               ),
+            ),
             if (!state.routeChipDismissed && !tracking)
               Positioned(
                 // Below the mode bar rather than beside it — sharing a row

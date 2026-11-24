@@ -120,6 +120,7 @@ class LocationRepository {
         headingDegrees: position.heading >= 0 && position.speed > 0.5
             ? position.heading
             : null,
+        speedMps: position.speed >= 0 ? position.speed : null,
       ),
     );
   }

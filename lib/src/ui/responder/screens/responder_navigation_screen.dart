@@ -14,7 +14,9 @@ import '../../../data/models/geo_point.dart';
 import '../../../data/models/ping.dart';
 import '../../../data/models/responder.dart';
 import '../../../data/services/access_analysis_service.dart';
+import '../../../data/services/compass_service.dart';
 import '../../../data/services/voice_directions_service.dart';
+import '../../../utils/heading_fusion.dart';
 import '../../../utils/route_progress.dart';
 import '../../../utils/turn_announcer.dart';
 import '../../home_map/controllers/map_annotation_controller.dart';
@@ -77,14 +79,36 @@ class _ResponderNavigationScreenState
   bool _seenPing = false;
   late final VoiceDirectionsService _voice;
 
+  /// GPS direction at driving speed, the phone's compass when slower.
+  final _heading = HeadingFusion();
+  StreamSubscription<double>? _compass;
+  TrackedPosition? _me;
+
   @override
   void initState() {
     super.initState();
     _voice = ref.read(voiceDirectionsServiceProvider);
+    _compass = ref
+        .read(compassServiceProvider)
+        .headings()
+        .listen(_onCompass, onError: (Object _) {});
+  }
+
+  void _onCompass(double reading) {
+    final heading = _heading.onCompass(reading);
+    final me = _me;
+    if (heading == null || me == null || !_mapReady) return;
+    _showHeading(me.point, heading);
+  }
+
+  void _showHeading(GeoPoint point, double? heading) {
+    unawaited(_map.syncHeadingMarker(point, heading));
+    if (_headingUp && heading != null) unawaited(_map.followHeading(heading));
   }
 
   @override
   void dispose() {
+    unawaited(_compass?.cancel());
     unawaited(_voice.stop());
     super.dispose();
   }
@@ -144,7 +168,13 @@ class _ResponderNavigationScreenState
   void _sync(ResponderPing ping, TrackedPosition? me, String mode) {
     if (!_mapReady) return;
     unawaited(_map.syncPingTarget(ping.userPoint, ping.userAccuracy));
-    unawaited(_map.syncHeadingMarker(me?.point, me?.headingDegrees));
+    _me = me;
+    if (me == null) {
+      unawaited(_map.syncHeadingMarker(null, null));
+    } else {
+      _heading.onGps(me.headingDegrees, me.speedMps);
+      _showHeading(me.point, _heading.current ?? me.headingDegrees);
+    }
     final route = _route;
     if (route != null) unawaited(_map.renderRoute(route.points));
     if (me == null) return;
@@ -158,8 +188,6 @@ class _ResponderNavigationScreenState
       );
     }
     unawaited(_maybeReroute(me.point, ping.userPoint, mode));
-    final heading = me.headingDegrees;
-    if (_headingUp && heading != null) unawaited(_map.followHeading(heading));
     if (_voiceOn && route != null) {
       final turn = nextTurnAnnouncement(
         steps: route.steps,

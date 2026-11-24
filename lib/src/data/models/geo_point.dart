@@ -13,6 +13,7 @@ class TrackedPosition {
     required this.point,
     required this.accuracyMeters,
     this.headingDegrees,
+    this.speedMps,
   });
 
   final GeoPoint point;
@@ -21,4 +22,7 @@ class TrackedPosition {
   /// The GPS's direction of travel (0° = north, clockwise), or null when
   /// standing still or unknown.
   final double? headingDegrees;
+
+  /// Ground speed in metres a second, or null when unknown.
+  final double? speedMps;
 }
